@@ -4,6 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated, Literal, Union, cast
 
+import sqlalchemy as sa
 from pydantic import BaseModel, ConfigDict
 from sqlmodel import JSON, Column, DateTime, Field, SQLModel, func
 from sqlmodel._compat import SQLModelConfig
@@ -97,7 +98,11 @@ class Audiobook(BaseSQLModel, table=True):
     )
     search_status: SearchStatusEnum = Field(
         default=SearchStatusEnum.not_searched,
-        sa_column_kwargs={"server_default": "not_searched"},
+        sa_column=Column(
+            sa.String(),
+            server_default="not_searched",
+            nullable=False,
+        ),
     )
     search_note: str | None = None
     last_searched_at: datetime | None = Field(
