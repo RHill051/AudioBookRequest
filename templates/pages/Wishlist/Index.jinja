@@ -2,11 +2,24 @@
     results: list[AudiobookWishlistResult],
     user: DetailedUser,
     counts: WishlistCounts,
+    abs_configured: bool = False,
     sort = "title",
     sort_dir = "asc",
 #}
 
 <WishlistLayout title="Wishlist" user={{ user }} counts={{ counts }} page="wishlist">
+{% if abs_configured and user.is_admin() %}
+<div class="flex justify-end">
+    <button class="btn btn-sm"
+            hx-post="{{ base_url }}/wishlist/hx-abs-sync?sort={{ sort }}&amp;sort_dir={{ sort_dir }}"
+            hx-target="#book-table-body"
+            hx-swap="outerHTML"
+            hx-disabled-elt="this">
+        <icons.Download />
+        Sync with AudioBookShelf
+    </button>
+</div>
+{% endif %}
 <div class="overflow-x-auto flex-1 min-h-0 border-b pb-2 border-b-base-200">
     <Wishlist.Wishlist results={{ results }} user={{ user }} page="wishlist" counts={{ counts }} sort={{ sort }} sort_dir={{ sort_dir }} />
 </div>

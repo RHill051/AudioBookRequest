@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, Security
 from sqlmodel import Session
 
 from app.internal.audible.types import audible_region_type, get_region_from_settings
+from app.internal.audiobookshelf.client import abs_mark_downloaded_flags
 from app.internal.auth.authentication import ABRAuth, DetailedUser
 from app.internal.models import GroupEnum
 from app.internal.prowlarr.util import prowlarr_config
@@ -46,6 +47,11 @@ async def read_search(
             page=page,
             region=region,
         )
+
+        if query and results:
+            await abs_mark_downloaded_flags(
+                session, client_session, [r.book for r in results]
+            )
 
         prowlarr_configured = prowlarr_config.is_valid(session)
 
