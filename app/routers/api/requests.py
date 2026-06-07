@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Annotated, Literal
 
 from aiohttp import ClientSession
@@ -172,6 +173,7 @@ async def mark_downloaded(
     book = session.exec(select(Audiobook).where(Audiobook.asin == asin_or_uuid)).first()
     if book:
         book.downloaded = True
+        book.downloaded_at = datetime.now()
         session.add(book)
         session.commit()
 

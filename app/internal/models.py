@@ -82,6 +82,13 @@ class Audiobook(BaseSQLModel, table=True):
         ),
     )
     downloaded: bool = False
+    downloaded_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            type_=DateTime,
+            nullable=True,
+        ),
+    )
 
     requests: list["AudiobookRequest"] = Relationship(back_populates="audiobook")  # pyright: ignore[reportAny]
 
@@ -117,6 +124,14 @@ class AudiobookRequest(BaseSQLModel, table=True):
         foreign_key="user.username",
         ondelete="CASCADE",
     )
+    created_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column=Column(
+            server_default=func.now(),
+            type_=DateTime,
+            nullable=False,
+        ),
+    )
     updated_at: datetime = Field(
         default_factory=datetime.now,
         sa_column=Column(
@@ -148,6 +163,12 @@ class AudiobookWishlistResult(BaseModel):
     def requested_by_usernames(self):
         return "\n".join(req.user_username for req in self.requests)
 
+    @property
+    def first_requested_at(self) -> datetime | None:
+        if not self.requests:
+            return None
+        return min(req.created_at for req in self.requests)
+
 
 class ManualBookRequest(BaseSQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -158,6 +179,14 @@ class ManualBookRequest(BaseSQLModel, table=True):
     narrators: list[str] = Field(default_factory=list, sa_column=Column(JSON))
     publish_date: str | None = None
     additional_info: str | None = None
+    created_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column=Column(
+            server_default=func.now(),
+            type_=DateTime,
+            nullable=False,
+        ),
+    )
     updated_at: datetime = Field(
         default_factory=datetime.now,
         sa_column=Column(

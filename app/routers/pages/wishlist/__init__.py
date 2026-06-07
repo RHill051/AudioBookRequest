@@ -26,15 +26,19 @@ router.include_router(sources.router)
 async def wishlist(
     session: Annotated[Session, Depends(get_session)],
     user: Annotated[DetailedUser, Security(ABRAuth())],
+    sort: str = "title",
+    sort_dir: str = "asc",
 ):
     username = None if user.is_admin() else user.username
-    results = get_wishlist_results(session, username, "not_downloaded")
+    results = get_wishlist_results(session, username, "not_downloaded", sort, sort_dir)
     counts = get_wishlist_counts(session, user)
     return catalog_response(
         "Wishlist.Index",
         user=user,
         results=results,
         counts=counts,
+        sort=sort,
+        sort_dir=sort_dir,
     )
 
 
@@ -44,10 +48,12 @@ async def start_auto_download(
     session: Annotated[Session, Depends(get_session)],
     client_session: Annotated[ClientSession, Depends(get_connection)],
     user: Annotated[DetailedUser, Security(ABRAuth(GroupEnum.trusted))],
+    sort: str = "title",
+    sort_dir: str = "asc",
 ):
     await start_auto_download_endpoint(asin, session, client_session, user)
     username = None if user.is_admin() else user.username
-    results = get_wishlist_results(session, username, "not_downloaded")
+    results = get_wishlist_results(session, username, "not_downloaded", sort, sort_dir)
     counts = get_wishlist_counts(session, user)
 
     return catalog_response(
@@ -57,6 +63,8 @@ async def start_auto_download(
         page="wishlist",
         counts=counts,
         update_tablist=True,
+        sort=sort,
+        sort_dir=sort_dir,
     )
 
 
@@ -66,6 +74,8 @@ async def delete_request(
     session: Annotated[Session, Depends(get_session)],
     user: Annotated[DetailedUser, Security(ABRAuth())],
     downloaded: bool | None = None,
+    sort: str = "title",
+    sort_dir: str = "asc",
 ):
     await api_delete_request(asin, session, user)
 
@@ -76,6 +86,8 @@ async def delete_request(
             session,
             None if user.is_admin() else user.username,
             "downloaded",
+            sort,
+            sort_dir,
         )
         return catalog_response(
             "Wishlist.Wishlist",
@@ -84,12 +96,16 @@ async def delete_request(
             page="downloaded",
             counts=counts,
             update_tablist=True,
+            sort=sort,
+            sort_dir=sort_dir,
         )
     else:
         results = get_wishlist_results(
             session,
             None if user.is_admin() else user.username,
             "not_downloaded",
+            sort,
+            sort_dir,
         )
         return catalog_response(
             "Wishlist.Wishlist",
@@ -98,4 +114,6 @@ async def delete_request(
             page="wishlist",
             counts=counts,
             update_tablist=True,
+            sort=sort,
+            sort_dir=sort_dir,
         )

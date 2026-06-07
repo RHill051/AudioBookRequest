@@ -187,6 +187,7 @@ async def abs_list_library_items(
                 release_date=release_date,
                 runtime_length_min=runtime_length_min,
                 downloaded=True,
+                downloaded_at=datetime.now(),
             )
             books.append(book)
         except Exception as e:
@@ -301,6 +302,8 @@ async def abs_mark_downloaded_flags(
             logger.debug("ABS: exist check", asin=b.asin, exists=exists)
             if exists:
                 b.downloaded = True
+                if not b.downloaded_at:
+                    b.downloaded_at = datetime.now()
                 session.add(b)
         except Exception as e:
             logger.debug("ABS: failed exist check", asin=b.asin, error=str(e))

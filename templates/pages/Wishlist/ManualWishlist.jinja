@@ -3,6 +3,8 @@
     user: DetailedUser,
     counts: WishlistCounts,
     update_tablist = False, # performs oob replacement for the tablist
+    sort = "title",
+    sort_dir = "asc",
 #}
 
 <table id="book-table-body" class="table table-pin-rows min-w-240">
@@ -14,12 +16,8 @@
         <tr>
             <th>
             </th>
-            <th>
-                Title
-            </th>
-            <th>
-                Author
-            </th>
+            <SortTh label="Title" column="title" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path="/wishlist/manual" />
+            <SortTh label="Author" column="author" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path="/wishlist/manual" />
             <th>
                 Narrator
             </th>
@@ -32,6 +30,7 @@
             <th>
                 Requested by
             </th>
+            <SortTh label="Date Added" column="added" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path="/wishlist/manual" />
             <th>
             </th>
         </tr>
@@ -77,6 +76,9 @@
                 <td>
                     {{ book.user_username }}
                 </td>
+                <td class="whitespace-nowrap">
+                    {{ book.created_at.strftime("%b %d, %Y") }}
+                </td>
                 <td class="grid grid-cols-2 min-w-32 gap-1 w-fit ml-auto">
                     <a preload
                        title="Torrent Sources"
@@ -93,7 +95,7 @@
                     <button title="Remove"
                             class="btn btn-square"
                             {% if not user.is_admin() %}disabled{% endif %}
-                            hx-delete="{{ base_url }}/wishlist/manual/hx-delete/{{ book.id }}"
+                            hx-delete="{{ base_url }}/wishlist/manual/hx-delete/{{ book.id }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}"
                             hx-swap="outerHTML"
                             hx-target="#book-table-body"
                             hx-disabled-elt="this">
@@ -109,7 +111,7 @@
                         <button class="btn btn-square"
                                 title="Set as downloaded"
                                 {% if not user.is_admin() %}disabled{% endif %}
-                                hx-patch="{{ base_url }}/wishlist/manual/hx-add/{{ book.id }}"
+                                hx-patch="{{ base_url }}/wishlist/manual/hx-add/{{ book.id }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}"
                                 hx-swap="outerHTML"
                                 hx-target="#book-table-body"
                                 hx-disabled-elt="this">

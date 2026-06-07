@@ -151,6 +151,7 @@ async def start_download(
             ).all()
             for b in same_books:
                 b.downloaded = True
+                b.downloaded_at = datetime.now()
                 session.add(b)
 
             await send_all_notifications(

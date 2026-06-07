@@ -4,7 +4,15 @@
     page: str,
     counts: WishlistCounts,
     update_tablist = False, # performs oob replacement for the tablist
+    sort = "title",
+    sort_dir = "asc",
 #}
+
+{% if page.__eq__("downloaded") %}
+    {% set sort_path = "/wishlist/downloaded" %}
+{% else %}
+    {% set sort_path = "/wishlist" %}
+{% endif %}
 
 <table id="book-table-body" class="table table-pin-rows min-w-240">
     {% if update_tablist %}
@@ -17,24 +25,18 @@
             </th>
             <th>
             </th>
-            <th>
-                Title
-            </th>
-            <th>
-                Author
-            </th>
+            <SortTh label="Title" column="title" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
+            <SortTh label="Author" column="author" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
             <th>
                 Narrator
             </th>
-            <th>
-                Release
-            </th>
-            <th>
-                Length (hrs)
-            </th>
-            <th>
-                # Requested
-            </th>
+            <SortTh label="Release" column="release" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
+            <SortTh label="Length (hrs)" column="length" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
+            <SortTh label="# Requested" column="requested" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
+            <SortTh label="Date Added" column="added" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
+            {% if page.__eq__("downloaded") %}
+                <SortTh label="Downloaded" column="downloaded" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
+            {% endif %}
             <th>
             </th>
         </tr>
@@ -135,6 +137,15 @@
                         {% endif %}
                     </td>
 
+                    <td class="whitespace-nowrap">
+                        {{ result.first_requested_at.strftime("%b %d, %Y") if result.first_requested_at else "-" }}
+                    </td>
+                    {% if page.__eq__("downloaded") %}
+                        <td class="whitespace-nowrap">
+                            {{ book.downloaded_at.strftime("%b %d, %Y") if book.downloaded_at else "-" }}
+                        </td>
+                    {% endif %}
+
                     <td class="grid grid-cols-2 min-w-32 gap-1 w-fit ml-auto">
                         <a preload
                            title="Torrent Sources"
@@ -145,7 +156,7 @@
                         </a>
                         <button {% if book.downloaded %}title="Downloaded"class="btn btn-square btn-ghost bg-success text-neutral/20" {% else %} title="Automatic Download" class="btn btn-square" {% endif %}
                                 {% if not user.can_download() or book.downloaded %}disabled{% endif %}
-                                hx-post="{{ base_url }}/wishlist/hx-auto-download/{{ book.asin }}"
+                                hx-post="{{ base_url }}/wishlist/hx-auto-download/{{ book.asin }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}"
                                 hx-swap="outerHTML"
                                 hx-target="#book-table-body"
                                 hx-disabled-elt="this">
@@ -153,7 +164,7 @@
                         </button>
                         <button title="Remove"
                                 class="btn btn-square"
-                                hx-delete="{{ base_url }}/wishlist/hx-delete/{{ book.asin }}{%- if page.__eq__('downloaded') -%}?downloaded=true{%- endif -%}"
+                                hx-delete="{{ base_url }}/wishlist/hx-delete/{{ book.asin }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}{%- if page.__eq__('downloaded') -%}&amp;downloaded=true{%- endif -%}"
                                 hx-swap="outerHTML"
                                 hx-target="#book-table-body"
                                 hx-disabled-elt="this">
@@ -168,7 +179,7 @@
                         {% else %}
                             <button class="btn btn-square"
                                     title="Set as downloaded"
-                                    hx-patch="{{ base_url }}/wishlist/downloaded/hx-add/{{ book.asin }}"
+                                    hx-patch="{{ base_url }}/wishlist/downloaded/hx-add/{{ book.asin }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}"
                                     {% if not user.is_admin() %}disabled{% endif %}
                                     hx-swap="outerHTML"
                                     hx-target="#book-table-body"

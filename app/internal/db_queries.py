@@ -1,9 +1,10 @@
-from typing import Literal, Sequence, cast
+from datetime import datetime
+from typing import Literal, cast
 
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import InstrumentedAttribute, selectinload
-from sqlmodel import Session, asc, col, not_, select
+from sqlmodel import Session, col, not_, select
 
 from app.internal.models import (
     Audiobook,
@@ -62,6 +63,8 @@ def get_wishlist_results(
     session: Session,
     username: str | None = None,
     response_type: Literal["all", "downloaded", "not_downloaded"] = "all",
+    sort_by: str = "title",
+    sort_dir: str = "asc",
 ) -> list[AudiobookWishlistResult]:
     """
     Gets the books that have been requested. If a username is given only the books requested by that
@@ -95,23 +98,68 @@ def get_wishlist_results(
         )
     ).all()
 
-    return [
-        AudiobookWishlistResult(
-            book=book,
-            requests=book.requests,
-        )
+    result_list = [
+        AudiobookWishlistResult(book=book, requests=book.requests)
         for book in results
     ]
 
+    reverse = sort_dir == "desc"
+    match sort_by:
+        case "author":
+            result_list.sort(
+                key=lambda r: r.book.authors[0].lower() if r.book.authors else "",
+                reverse=reverse,
+            )
+        case "release":
+            result_list.sort(key=lambda r: r.book.release_date, reverse=reverse)
+        case "length":
+            result_list.sort(key=lambda r: r.book.runtime_length_min, reverse=reverse)
+        case "requested":
+            result_list.sort(key=lambda r: r.amount_requested, reverse=reverse)
+        case "added":
+            result_list.sort(
+                key=lambda r: r.first_requested_at or datetime.min,
+                reverse=reverse,
+            )
+        case "downloaded":
+            result_list.sort(
+                key=lambda r: r.book.downloaded_at or datetime.min,
+                reverse=reverse,
+            )
+        case _:
+            result_list.sort(key=lambda r: r.book.title.lower(), reverse=reverse)
+
+    return result_list
+
 
 def get_all_manual_requests(
-    session: Session, user: User
-) -> Sequence[ManualBookRequest]:
-    return session.exec(
-        select(ManualBookRequest)
-        .where(
-            user.is_admin() or ManualBookRequest.user_username == user.username,
-            col(ManualBookRequest.user_username).is_not(None),
-        )
-        .order_by(asc(ManualBookRequest.downloaded))
-    ).all()
+    session: Session,
+    user: User,
+    sort_by: str = "title",
+    sort_dir: str = "asc",
+) -> list[ManualBookRequest]:
+    results = list(
+        session.exec(
+            select(ManualBookRequest).where(
+                user.is_admin() or ManualBookRequest.user_username == user.username,
+                col(ManualBookRequest.user_username).is_not(None),
+            )
+        ).all()
+    )
+
+    reverse = sort_dir == "desc"
+    match sort_by:
+        case "author":
+            results.sort(
+                key=lambda r: r.authors[0].lower() if r.authors else "",
+                reverse=reverse,
+            )
+        case "added":
+            results.sort(key=lambda r: r.created_at, reverse=reverse)
+        case _:
+            results.sort(key=lambda r: r.title.lower(), reverse=reverse)
+
+    # Keep not-downloaded entries before downloaded ones (stable secondary sort)
+    results.sort(key=lambda r: r.downloaded)
+
+    return results

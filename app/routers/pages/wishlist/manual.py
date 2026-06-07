@@ -20,14 +20,18 @@ router = APIRouter(prefix="/manual")
 async def manual(
     session: Annotated[Session, Depends(get_session)],
     user: Annotated[DetailedUser, Security(ABRAuth())],
+    sort: str = "title",
+    sort_dir: str = "asc",
 ):
-    results = get_all_manual_requests(session, user)
+    results = get_all_manual_requests(session, user, sort, sort_dir)
     counts = get_wishlist_counts(session, user)
     return catalog_response(
         "Wishlist.Manual",
         user=user,
         results=results,
         counts=counts,
+        sort=sort,
+        sort_dir=sort_dir,
     )
 
 
@@ -37,10 +41,12 @@ async def downloaded_manual(
     session: Annotated[Session, Depends(get_session)],
     background_task: BackgroundTasks,
     admin_user: Annotated[DetailedUser, Security(ABRAuth(GroupEnum.admin))],
+    sort: str = "title",
+    sort_dir: str = "asc",
 ):
     await mark_manual_downloaded(id, session, background_task, admin_user)
 
-    results = get_all_manual_requests(session, admin_user)
+    results = get_all_manual_requests(session, admin_user, sort, sort_dir)
     counts = get_wishlist_counts(session, admin_user)
 
     if abs_config.is_valid(session):
@@ -52,6 +58,8 @@ async def downloaded_manual(
         results=results,
         counts=counts,
         update_tablist=True,
+        sort=sort,
+        sort_dir=sort_dir,
     )
 
 
@@ -60,10 +68,12 @@ async def delete_manual(
     id: uuid.UUID,
     session: Annotated[Session, Depends(get_session)],
     admin_user: Annotated[DetailedUser, Security(ABRAuth(GroupEnum.admin))],
+    sort: str = "title",
+    sort_dir: str = "asc",
 ):
     await delete_manual_request(id, session, admin_user)
 
-    results = get_all_manual_requests(session, admin_user)
+    results = get_all_manual_requests(session, admin_user, sort, sort_dir)
     counts = get_wishlist_counts(session, admin_user)
 
     return catalog_response(
@@ -72,4 +82,6 @@ async def delete_manual(
         results=results,
         counts=counts,
         update_tablist=True,
+        sort=sort,
+        sort_dir=sort_dir,
     )

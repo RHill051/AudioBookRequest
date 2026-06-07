@@ -19,15 +19,19 @@ router = APIRouter(prefix="/downloaded")
 async def downloaded(
     session: Annotated[Session, Depends(get_session)],
     user: Annotated[DetailedUser, Security(ABRAuth())],
+    sort: str = "title",
+    sort_dir: str = "asc",
 ):
     username = None if user.is_admin() else user.username
-    results = get_wishlist_results(session, username, "downloaded")
+    results = get_wishlist_results(session, username, "downloaded", sort, sort_dir)
     counts = get_wishlist_counts(session, user)
     return catalog_response(
         "Wishlist.Downloaded",
         user=user,
         results=results,
         counts=counts,
+        sort=sort,
+        sort_dir=sort_dir,
     )
 
 
@@ -37,11 +41,13 @@ async def update_downloaded(
     session: Annotated[Session, Depends(get_session)],
     background_task: BackgroundTasks,
     admin_user: Annotated[DetailedUser, Security(ABRAuth(GroupEnum.admin))],
+    sort: str = "title",
+    sort_dir: str = "asc",
 ):
     await api_mark_downloaded(asin, session, background_task, admin_user)
 
     username = None if admin_user.is_admin() else admin_user.username
-    results = get_wishlist_results(session, username, "not_downloaded")
+    results = get_wishlist_results(session, username, "not_downloaded", sort, sort_dir)
     counts = get_wishlist_counts(session, admin_user)
 
     if abs_config.is_valid(session):
@@ -54,4 +60,6 @@ async def update_downloaded(
         page="wishlist",
         counts=counts,
         update_tablist=True,
+        sort=sort,
+        sort_dir=sort_dir,
     )
