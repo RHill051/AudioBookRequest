@@ -28,4 +28,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/audiobookrequest:dev
+          tags: ghcr.io/${{ github.repository_owner | lower }}/audiobookrequest:dev
