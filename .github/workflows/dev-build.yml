@@ -3,7 +3,7 @@ name: Build Dev Image
 on:
   push:
     branches:
-      - your-branch-name  # replace with your actual branch name
+      - dev  # replace with your actual branch name
 
 jobs:
   build:
