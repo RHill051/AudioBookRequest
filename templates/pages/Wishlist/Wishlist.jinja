@@ -8,11 +8,7 @@
     sort_dir = "asc",
 #}
 
-{% if page.__eq__("downloaded") %}
-    {% set sort_path = "/wishlist/downloaded" %}
-{% else %}
-    {% set sort_path = "/wishlist" %}
-{% endif %}
+{% set sort_path = "/wishlist/downloaded" if page.__eq__("downloaded") else "/wishlist" %}
 
 <table id="book-table-body" class="table table-pin-rows min-w-240">
     {% if update_tablist %}
