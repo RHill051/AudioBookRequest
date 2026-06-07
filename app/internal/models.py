@@ -61,6 +61,12 @@ class User(BaseSQLModel, table=True):
         return self.username == username
 
 
+class SearchStatusEnum(str, Enum):
+    not_searched = "not_searched"
+    not_found = "not_found"
+    found_elsewhere = "found_elsewhere"
+
+
 class Audiobook(BaseSQLModel, table=True):
     """A cached Audible audiobook result. Used for both the search results and also linked to via a foreign key for requests."""
 
@@ -270,12 +276,6 @@ class Indexer(BaseModel, frozen=True):
 class Config(BaseSQLModel, table=True):
     key: str = Field(primary_key=True)
     value: str
-
-
-class SearchStatusEnum(str, Enum):
-    not_searched = "not_searched"
-    not_found = "not_found"
-    found_elsewhere = "found_elsewhere"
 
 
 class EventEnum(str, Enum):
