@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import posixpath
 import re
+import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
@@ -12,7 +13,6 @@ from sqlmodel import Session
 
 from app.internal.audiobookshelf.config import abs_config
 from app.internal.audiobookshelf.types import (
-    ABSBookItem,
     ABSBookItemMinified,
     ABSLibrary,
     ABSPodcastItem,
@@ -22,6 +22,9 @@ from app.util.connection import USER_AGENT
 from app.util.db import get_session
 from app.util.log import logger
 
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 def _headers(session: Session) -> dict[str, str]:
     token = abs_config.get_api_token(session)
@@ -29,9 +32,151 @@ def _headers(session: Session) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "User-Agent": USER_AGENT}
 
 
+def _normalize(s: str) -> str:
+    s = s.lower().strip()
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+# ---------------------------------------------------------------------------
+# Pydantic response models
+# ---------------------------------------------------------------------------
+
 class _LibraryArray(BaseModel):
     libraries: list[ABSLibrary] = []
 
+
+class _ListResponseBook(BaseModel):
+    results: list[ABSBookItemMinified] = []
+    mediaType: Literal["book"]
+
+
+class _ListResponsePodcast(BaseModel):
+    results: list[ABSPodcastItem] = []
+    mediaType: Literal["podcast"]
+
+
+_ListResponse: TypeAdapter[_ListResponseBook | _ListResponsePodcast] = TypeAdapter(
+    _ListResponseBook | _ListResponsePodcast
+)
+
+
+# ---------------------------------------------------------------------------
+# Library index cache
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class ABSLibraryIndex:
+    """Immutable in-memory index of the ABS library for O(1) membership checks."""
+    asins: frozenset[str]
+    norm_titles: frozenset[str]
+
+
+_LIBRARY_CACHE_TTL = 600  # seconds (10 minutes)
+_library_cache: dict[str, tuple[float, ABSLibraryIndex]] = {}
+
+
+def flush_abs_library_cache() -> None:
+    """Invalidate the in-memory library index so the next check fetches fresh data."""
+    _library_cache.clear()
+
+
+async def _fetch_all_library_items(
+    session: Session,
+    client_session: ClientSession,
+) -> list[ABSBookItemMinified]:
+    """Paginate through the entire ABS library and return all book items."""
+    base_url = abs_config.get_base_url(session)
+    lib_id = abs_config.get_library_id(session)
+    if not base_url or not lib_id:
+        return []
+
+    url = posixpath.join(base_url, f"api/libraries/{lib_id}/items")
+    all_items: list[ABSBookItemMinified] = []
+    page = 0
+    limit = 500
+
+    while True:
+        params = {"limit": str(limit), "page": str(page), "minified": "1"}
+        try:
+            async with client_session.get(
+                url, headers=_headers(session), params=params
+            ) as resp:
+                if not resp.ok:
+                    logger.warning(
+                        "ABS: failed to fetch library page",
+                        status=resp.status,
+                        page=page,
+                    )
+                    break
+                payload = _ListResponse.validate_python(await resp.json())
+                if payload.mediaType == "podcast":
+                    break
+                batch = payload.results
+        except Exception as e:
+            logger.debug("ABS: exception fetching library page", page=page, error=str(e))
+            break
+
+        all_items.extend(batch)
+        if len(batch) < limit:
+            break  # last page
+        page += 1
+
+    return all_items
+
+
+def _build_library_index(items: list[ABSBookItemMinified]) -> ABSLibraryIndex:
+    asins: set[str] = set()
+    norm_titles: set[str] = set()
+    for item in items:
+        meta = item.media.metadata
+        if meta.asin:
+            asins.add(meta.asin)
+        if meta.title:
+            norm_titles.add(_normalize(meta.title))
+    return ABSLibraryIndex(asins=frozenset(asins), norm_titles=frozenset(norm_titles))
+
+
+async def abs_get_library_index(
+    session: Session,
+    client_session: ClientSession,
+) -> ABSLibraryIndex | None:
+    """Return the cached library index, refreshing it if stale or absent."""
+    lib_id = abs_config.get_library_id(session)
+    if not lib_id:
+        return None
+
+    entry = _library_cache.get(lib_id)
+    if entry is not None:
+        cached_at, index = entry
+        if time.time() - cached_at < _LIBRARY_CACHE_TTL:
+            logger.debug("ABS: library index cache hit", lib_id=lib_id)
+            return index
+
+    logger.debug("ABS: refreshing library index", lib_id=lib_id)
+    items = await _fetch_all_library_items(session, client_session)
+    index = _build_library_index(items)
+    _library_cache[lib_id] = (time.time(), index)
+    logger.info(
+        "ABS: library index built",
+        lib_id=lib_id,
+        asin_count=len(index.asins),
+        title_count=len(index.norm_titles),
+    )
+    return index
+
+
+def _book_in_index(book: Audiobook, index: ABSLibraryIndex) -> bool:
+    if book.asin and book.asin in index.asins:
+        return True
+    if book.title and _normalize(book.title) in index.norm_titles:
+        return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
 
 async def abs_get_libraries(
     session: Session, client_session: ClientSession
@@ -82,29 +227,12 @@ async def background_abs_trigger_scan():
             )
 
 
-class _ListResponseBook(BaseModel):
-    results: list[ABSBookItemMinified] = []
-    mediaType: Literal["book"]
-
-
-class _ListResponsePodcast(BaseModel):
-    results: list[ABSPodcastItem] = []
-    mediaType: Literal["podcast"]
-
-
-_ListResponse: TypeAdapter[_ListResponseBook | _ListResponsePodcast] = TypeAdapter(
-    _ListResponseBook | _ListResponsePodcast
-)
-
-
 async def abs_list_library_items(
     session: Session,
     client_session: ClientSession,
     limit: int = 10,
 ) -> list[Audiobook]:
-    """
-    Fetch a page of items from the configured ABS library and map them to Audiobook objects to render on the homepage
-    """
+    """Fetch the N most recently added items from ABS for homepage display."""
     base_url = abs_config.get_base_url(session)
     lib_id = abs_config.get_library_id(session)
     if not base_url or not lib_id:
@@ -140,18 +268,15 @@ async def abs_list_library_items(
         logger.debug("ABS: exception listing library items", error=str(e))
         return []
 
-    results = payload.results
     books: list[Audiobook] = []
-    for item in results:
+    for item in payload.results:
         try:
             metadata = item.media.metadata
             title = metadata.title
             subtitle = metadata.subtitle
             authors = [metadata.authorName]
             narrators = [metadata.narratorName]
-            # Cover: ABS exposes cover via /api/items/:id/cover
             cover_image = posixpath.join(base_url, f"api/items/{item.id}/cover")
-            # Duration in seconds -> minutes
             try:
                 runtime_length_min = int(round(item.media.duration / 60))
             except Exception:
@@ -159,7 +284,6 @@ async def abs_list_library_items(
 
             if metadata.publishedDate:
                 try:
-                    # Try ISO format
                     release_date = datetime.fromisoformat(
                         metadata.publishedDate.replace("Z", "+00:00")
                     )
@@ -177,111 +301,24 @@ async def abs_list_library_items(
                 )
                 continue
 
-            book = Audiobook(
-                asin=metadata.asin,
-                title=title,
-                subtitle=subtitle,
-                authors=authors,
-                narrators=narrators,
-                cover_image=cover_image,
-                release_date=release_date,
-                runtime_length_min=runtime_length_min,
-                downloaded=True,
-                downloaded_at=datetime.now(),
+            books.append(
+                Audiobook(
+                    asin=metadata.asin,
+                    title=title,
+                    subtitle=subtitle,
+                    authors=authors,
+                    narrators=narrators,
+                    cover_image=cover_image,
+                    release_date=release_date,
+                    runtime_length_min=runtime_length_min,
+                    downloaded=True,
+                    downloaded_at=datetime.now(),
+                )
             )
-            books.append(book)
         except Exception as e:
             logger.debug("ABS: failed to map library item", error=str(e))
 
     return books
-
-
-class _BookSearchResult(BaseModel):
-    class _LibraryItem(BaseModel):
-        libraryItem: ABSBookItem
-
-    book: list[_LibraryItem] | None = None
-
-
-async def _abs_search(
-    session: Session, client_session: ClientSession, query: str
-) -> list[ABSBookItem]:
-    base_url = abs_config.get_base_url(session)
-    lib_id = abs_config.get_library_id(session)
-    if not base_url or not lib_id:
-        return []
-    url = posixpath.join(base_url, f"api/libraries/{lib_id}/search")
-    try:
-        async with client_session.get(
-            url, headers=_headers(session), params={"q": query}
-        ) as resp:
-            if not resp.ok:
-                logger.debug(
-                    "ABS: search failed", status=resp.status, reason=resp.reason
-                )
-                return []
-            data = _BookSearchResult.model_validate(await resp.json())
-            if data.book is None:
-                logger.warning(
-                    "ABS: search returned no book results", query=query, lib_id=lib_id
-                )
-                return []
-            return [it.libraryItem for it in data.book]
-    except Exception as e:
-        logger.debug("ABS: exception during search", error=str(e))
-        return []
-
-
-def _normalize(s: str) -> str:
-    s = s.lower().strip()
-    s = re.sub(r"[^a-z0-9]+", " ", s)
-    return re.sub(r"\s+", " ", s).strip()
-
-
-async def abs_book_exists(
-    session: Session,
-    client_session: ClientSession,
-    book: Audiobook,
-) -> bool:
-    """
-    Heuristic check if a book exists in ABS library by searching by ASIN and title/author.
-    """
-    # Try ASIN first
-    candidates: list[ABSBookItem] = []
-    if book.asin:
-        candidates = await _abs_search(session, client_session, book.asin)
-        logger.debug(
-            "ABS: ASIN search results",
-            asin=book.asin,
-            candidate_count=len(candidates),
-        )
-    if not candidates:
-        logger.debug(
-            "ABS: ASIN search yielded no results. Checking with title",
-            asin=book.asin,
-        )
-        q = f"{book.title}".strip()
-        candidates = await _abs_search(session, client_session, q)
-
-    if not candidates:
-        return False
-
-    norm_title = _normalize(book.title)
-    norm_authors = {_normalize(a) for a in book.authors}
-
-    for it in candidates:
-        # ABS search returns different shapes, try best-effort
-        title = it.media.metadata.title
-        if not title:
-            logger.debug("ABS: search result missing title", item=it)
-            continue
-        authors = it.media.metadata.authors
-        if _normalize(title) == norm_title:
-            if not norm_authors or any(
-                _normalize(a.name) in norm_authors for a in authors
-            ):
-                return True
-    return False
 
 
 async def abs_mark_downloaded_flags(
@@ -290,26 +327,29 @@ async def abs_mark_downloaded_flags(
     books: list[Audiobook],
     commit: bool = True,
 ) -> None:
+    """
+    Check each book against the ABS library index and mark matches as downloaded.
+    Uses a 10-minute in-memory cache so only the first call per window hits the API.
+    Pass commit=False (search context) to mark in-memory only without writing to the DB.
+    """
     if not abs_config.get_check_downloaded(session):
         return
-    # Only check books not already marked downloaded
+
     to_check = [b for b in books if not b.downloaded]
-    # Limit to avoid flooding ABS
-    to_check = to_check[:25]
+    if not to_check:
+        return
 
-    async def _check_and_mark(b: Audiobook):
-        try:
-            exists = await abs_book_exists(session, client_session, b)
-            logger.debug("ABS: exist check", asin=b.asin, exists=exists)
-            if exists:
-                b.downloaded = True
-                if not b.downloaded_at:
-                    b.downloaded_at = datetime.now()
-                if commit:
-                    session.add(b)
-        except Exception as e:
-            logger.debug("ABS: failed exist check", asin=b.asin, error=str(e))
+    index = await abs_get_library_index(session, client_session)
+    if index is None:
+        return
 
-    await asyncio.gather(*[_check_and_mark(b) for b in to_check])
+    for b in to_check:
+        if _book_in_index(b, index):
+            b.downloaded = True
+            if not b.downloaded_at:
+                b.downloaded_at = datetime.now()
+            if commit:
+                session.add(b)
+
     if commit:
         session.commit()

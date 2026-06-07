@@ -7,6 +7,7 @@ from sqlalchemy.sql.functions import count
 from sqlmodel import Session, select
 
 from app.internal.audible.types import audible_region_type, get_region_from_settings
+from app.internal.audiobookshelf.client import abs_mark_downloaded_flags
 from app.internal.auth.authentication import ABRAuth, DetailedUser
 from app.internal.models import AudiobookRequest, AudiobookWithRequests
 from app.internal.ranking.quality import quality_config
@@ -129,6 +130,9 @@ async def get_category_recommendations(
         user=user,
         audible_region=audible_region,
     )
+
+    all_books = [bwr.book for books in result.values() for bwr in books]
+    await abs_mark_downloaded_flags(session, client_session, all_books, commit=False)
 
     region = audible_region or get_region_from_settings()
 

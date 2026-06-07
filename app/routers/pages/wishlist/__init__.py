@@ -5,7 +5,7 @@ from aiohttp import ClientSession
 from fastapi import APIRouter, Depends, Form, HTTPException, Security
 from sqlmodel import Session
 
-from app.internal.audiobookshelf.client import abs_mark_downloaded_flags
+from app.internal.audiobookshelf.client import abs_mark_downloaded_flags, flush_abs_library_cache
 from app.internal.audiobookshelf.config import abs_config
 from app.internal.auth.authentication import ABRAuth, DetailedUser
 from app.internal.db_queries import get_wishlist_counts, get_wishlist_results
@@ -54,6 +54,7 @@ async def abs_sync(
     sort: str = "title",
     sort_dir: str = "asc",
 ):
+    flush_abs_library_cache()
     results = get_wishlist_results(session, None, "not_downloaded", sort, sort_dir)
     books = [r.book for r in results]
     await abs_mark_downloaded_flags(session, client_session, books)

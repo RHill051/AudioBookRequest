@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime
 from typing import Awaitable
 
 from aiohttp import ClientSession
@@ -100,7 +101,7 @@ async def list_category_audible_books(
         "fiction": ["fiction", "novel", "literature", "story", "fantasy", "mystery"],
         "biography": ["biography", "memoir", "autobiography", "life story", "history"],
         "science": ["science", "technology", "physics", "psychology", "innovation"],
-        "recent_releases": ["2024", "new release", "latest", "just released"],
+        "recent_releases": [str(datetime.now().year), "new release", "latest", "just released"],
     }
 
     recommendations: dict[str, list[AudiobookWithRequests]] = {}

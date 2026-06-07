@@ -9,6 +9,7 @@ from app.internal.audiobookshelf.client import (
     abs_get_libraries,
     abs_list_library_items,
     abs_trigger_scan,
+    flush_abs_library_cache,
 )
 from app.internal.audiobookshelf.config import abs_config
 from app.internal.audiobookshelf.types import ABSLibrary
@@ -61,6 +62,7 @@ def update_abs_base_url(
 ):
     _ = admin_user
     abs_config.set_base_url(session, base_url)
+    flush_abs_library_cache()
     return Response(status_code=204)
 
 
@@ -72,6 +74,7 @@ def update_abs_api_token(
 ):
     _ = admin_user
     abs_config.set_api_token(session, api_token)
+    flush_abs_library_cache()
     return Response(status_code=204)
 
 
@@ -83,6 +86,7 @@ def update_abs_library(
 ):
     _ = admin_user
     abs_config.set_library_id(session, library_id)
+    flush_abs_library_cache()
     return Response(status_code=204)
 
 
