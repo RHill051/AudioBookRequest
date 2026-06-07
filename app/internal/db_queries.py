@@ -99,8 +99,7 @@ def get_wishlist_results(
     ).all()
 
     result_list = [
-        AudiobookWishlistResult(book=book, requests=book.requests)
-        for book in results
+        AudiobookWishlistResult(book=book, requests=book.requests) for book in results
     ]
 
     reverse = sort_dir == "desc"
