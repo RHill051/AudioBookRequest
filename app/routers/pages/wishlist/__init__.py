@@ -1,12 +1,13 @@
+from datetime import datetime
 from typing import Annotated
 
 from aiohttp import ClientSession
-from fastapi import APIRouter, Depends, Security
+from fastapi import APIRouter, Depends, Form, HTTPException, Security
 from sqlmodel import Session
 
 from app.internal.auth.authentication import ABRAuth, DetailedUser
 from app.internal.db_queries import get_wishlist_counts, get_wishlist_results
-from app.internal.models import GroupEnum
+from app.internal.models import Audiobook, GroupEnum, SearchStatusEnum
 from app.routers.api.requests import delete_request as api_delete_request
 from app.routers.api.requests import start_auto_download_endpoint
 from app.util.connection import get_connection
@@ -63,6 +64,44 @@ async def start_auto_download(
         page="wishlist",
         counts=counts,
         update_tablist=True,
+        sort=sort,
+        sort_dir=sort_dir,
+    )
+
+
+@router.patch("/hx-search-status/{asin}")
+async def update_search_status(
+    asin: str,
+    session: Annotated[Session, Depends(get_session)],
+    admin_user: Annotated[DetailedUser, Security(ABRAuth(GroupEnum.admin))],
+    search_status: Annotated[str, Form()],
+    search_note: Annotated[str | None, Form()] = None,
+    downloaded: bool | None = None,
+    sort: str = "title",
+    sort_dir: str = "asc",
+):
+    book = session.get(Audiobook, asin)
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    book.search_status = SearchStatusEnum(search_status)
+    book.search_note = search_note or None
+    book.last_searched_at = datetime.now()
+    session.add(book)
+    session.commit()
+
+    response_type = "downloaded" if downloaded else "not_downloaded"
+    page = "downloaded" if downloaded else "wishlist"
+    results = get_wishlist_results(session, None, response_type, sort, sort_dir)
+    counts = get_wishlist_counts(session, admin_user)
+
+    return catalog_response(
+        "Wishlist.Wishlist",
+        user=admin_user,
+        results=results,
+        page=page,
+        counts=counts,
+        update_tablist=False,
         sort=sort,
         sort_dir=sort_dir,
     )

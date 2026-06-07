@@ -89,6 +89,18 @@ class Audiobook(BaseSQLModel, table=True):
             nullable=True,
         ),
     )
+    search_status: SearchStatusEnum = Field(
+        default=SearchStatusEnum.not_searched,
+        sa_column_kwargs={"server_default": "not_searched"},
+    )
+    search_note: str | None = None
+    last_searched_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            type_=DateTime,
+            nullable=True,
+        ),
+    )
 
     requests: list["AudiobookRequest"] = Relationship(back_populates="audiobook")  # pyright: ignore[reportAny]
 
@@ -258,6 +270,12 @@ class Indexer(BaseModel, frozen=True):
 class Config(BaseSQLModel, table=True):
     key: str = Field(primary_key=True)
     value: str
+
+
+class SearchStatusEnum(str, Enum):
+    not_searched = "not_searched"
+    not_found = "not_found"
+    found_elsewhere = "found_elsewhere"
 
 
 class EventEnum(str, Enum):

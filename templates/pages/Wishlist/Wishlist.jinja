@@ -34,6 +34,9 @@
                 <SortTh label="Downloaded" column="downloaded" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
             {% endif %}
             <th>
+                Search Status
+            </th>
+            <th>
             </th>
         </tr>
     </thead>
@@ -142,6 +145,54 @@
                         </td>
                     {% endif %}
 
+                    <td>
+                        {% if book.search_status.__eq__("not_found") %}
+                            <span class="badge badge-error badge-sm whitespace-nowrap">Not Found</span>
+                        {% elif book.search_status.__eq__("found_elsewhere") %}
+                            <span class="badge badge-warning badge-sm whitespace-nowrap">Found Elsewhere</span>
+                        {% endif %}
+                        {% if book.search_note %}
+                            <div class="text-xs opacity-60 mt-1 max-w-32 line-clamp-2" title="{{ book.search_note }}">{{ book.search_note }}</div>
+                        {% endif %}
+                        {% if user.is_admin() %}
+                            <button class="btn btn-xs btn-ghost mt-1"
+                                    title="Edit search status"
+                                    onclick="searchStatus{{ loop.index }}.showModal()">
+                                <icons.Pencil />
+                            </button>
+                            <dialog id="searchStatus{{ loop.index }}" class="modal">
+                                <div class="modal-box">
+                                    <h3 class="text-lg font-bold mb-4">Search Status: <span class="italic">{{ book.title }}</span></h3>
+                                    {% if book.last_searched_at %}
+                                        <p class="text-xs opacity-60 mb-3">Last checked: {{ book.last_searched_at.strftime("%b %d, %Y") }}</p>
+                                    {% endif %}
+                                    <form hx-patch="{{ base_url }}/wishlist/hx-search-status/{{ book.asin }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}{%- if page.__eq__('downloaded') -%}&amp;downloaded=true{%- endif -%}"
+                                          hx-swap="outerHTML"
+                                          hx-target="#book-table-body">
+                                        <label class="form-control w-full mb-3">
+                                            <div class="label"><span class="label-text">Status</span></div>
+                                            <select name="search_status" class="select select-bordered w-full">
+                                                <option value="not_searched" {% if book.search_status.__eq__("not_searched") %}selected{% endif %}>Not Checked</option>
+                                                <option value="not_found" {% if book.search_status.__eq__("not_found") %}selected{% endif %}>Not Found</option>
+                                                <option value="found_elsewhere" {% if book.search_status.__eq__("found_elsewhere") %}selected{% endif %}>Found Elsewhere</option>
+                                            </select>
+                                        </label>
+                                        <label class="form-control w-full mb-4">
+                                            <div class="label"><span class="label-text">Note (optional)</span></div>
+                                            <textarea name="search_note" class="textarea textarea-bordered w-full" rows="3" placeholder="e.g. only M4B available, tried LibGen and MAM">{{ book.search_note or "" }}</textarea>
+                                        </label>
+                                        <div class="modal-action mt-0">
+                                            <button type="submit" class="btn btn-primary">Save</button>
+                                            <button type="button" class="btn" onclick="searchStatus{{ loop.index }}.close()">Cancel</button>
+                                        </div>
+                                    </form>
+                                </div>
+                                <form method="dialog" class="modal-backdrop">
+                                    <button>close</button>
+                                </form>
+                            </dialog>
+                        {% endif %}
+                    </td>
                     <td class="grid grid-cols-2 min-w-32 gap-1 w-fit ml-auto">
                         <a preload
                            title="Torrent Sources"
