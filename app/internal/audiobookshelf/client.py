@@ -288,6 +288,7 @@ async def abs_mark_downloaded_flags(
     session: Session,
     client_session: ClientSession,
     books: list[Audiobook],
+    commit: bool = True,
 ) -> None:
     if not abs_config.get_check_downloaded(session):
         return
@@ -304,9 +305,11 @@ async def abs_mark_downloaded_flags(
                 b.downloaded = True
                 if not b.downloaded_at:
                     b.downloaded_at = datetime.now()
-                session.add(b)
+                if commit:
+                    session.add(b)
         except Exception as e:
             logger.debug("ABS: failed exist check", asin=b.asin, error=str(e))
 
     await asyncio.gather(*[_check_and_mark(b) for b in to_check])
-    session.commit()
+    if commit:
+        session.commit()

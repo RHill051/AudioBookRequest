@@ -50,7 +50,7 @@ async def read_search(
 
         if query and results:
             await abs_mark_downloaded_flags(
-                session, client_session, [r.book for r in results]
+                session, client_session, [r.book for r in results], commit=False
             )
 
         prowlarr_configured = prowlarr_config.is_valid(session)
