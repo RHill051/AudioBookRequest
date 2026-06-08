@@ -28,7 +28,7 @@ def read_categories(
         user=user,
         page="categories",
         entries=entries,
-        catalog=CATEGORY_CATALOG,
+        category_catalog=CATEGORY_CATALOG,
     )
 
 
@@ -47,7 +47,7 @@ def toggle_category(
     return catalog_response(
         "Settings.Categories.List",
         entries=entries,
-        catalog=CATEGORY_CATALOG,
+        category_catalog=CATEGORY_CATALOG,
     )
 
 
@@ -68,7 +68,7 @@ def reorder_categories(
     return catalog_response(
         "Settings.Categories.List",
         entries=entries_sorted,
-        catalog=CATEGORY_CATALOG,
+        category_catalog=CATEGORY_CATALOG,
     )
 
 
@@ -86,7 +86,7 @@ def add_custom_category(
             message="Name and at least one search term are required.",
             toast_type="error",
             entries=get_user_categories(session, user.username),
-            catalog=CATEGORY_CATALOG,
+            category_catalog=CATEGORY_CATALOG,
         )
 
     entries = get_user_categories(session, user.username)
@@ -105,7 +105,7 @@ def add_custom_category(
         message=f'Added category "{new_entry.display_name}".',
         toast_type="success",
         entries=entries,
-        catalog=CATEGORY_CATALOG,
+        category_catalog=CATEGORY_CATALOG,
     )
 
 
@@ -121,5 +121,5 @@ def delete_custom_category(
     return catalog_response(
         "Settings.Categories.List",
         entries=entries,
-        catalog=CATEGORY_CATALOG,
+        category_catalog=CATEGORY_CATALOG,
     )

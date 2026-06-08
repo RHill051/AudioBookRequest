@@ -1,7 +1,7 @@
 {#def
     user: DetailedUser,
     entries: list[UserCategoryEntry],
-    catalog: dict[str, CatalogEntry],
+    category_catalog: dict[str, CatalogEntry],
 #}
 
 <SettingsLayout title="Settings - Categories" user={{ user }} page="categories">
@@ -13,7 +13,7 @@
             </p>
         </div>
 
-        <Settings.Categories.List entries={{ entries }} catalog={{ catalog }} />
+        <Settings.Categories.List entries={{ entries }} category_catalog={{ category_catalog }} />
 
         <div class="divider">Add Custom Category</div>
 
