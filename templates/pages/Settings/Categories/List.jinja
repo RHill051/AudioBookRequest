@@ -1,0 +1,47 @@
+{#def
+    entries: list[UserCategoryEntry],
+    catalog: dict[str, CatalogEntry],
+#}
+
+<div id="category-list-container">
+    <ul id="category-list"
+        class="flex flex-col gap-2"
+        data-reorder-url="{{ base_url }}/settings/categories/hx-reorder">
+        {% for entry in entries %}
+            <li data-id="{{ entry.id }}"
+                class="flex items-center gap-3 p-3 bg-base-200 rounded-lg">
+
+                <span class="drag-handle cursor-grab text-base-content/40 hover:text-base-content select-none">
+                    &#9776;
+                </span>
+
+                <input type="checkbox"
+                       class="checkbox checkbox-sm"
+                       {% if entry.enabled %}checked{% endif %}
+                       hx-post="{{ base_url }}/settings/categories/hx-toggle/{{ entry.id }}"
+                       hx-target="#category-list-container"
+                       hx-swap="outerHTML" />
+
+                <span class="flex-1 text-sm font-medium">{{ entry.display_name }}</span>
+
+                {% if not entry.is_custom %}
+                    <span class="badge badge-ghost badge-sm">built-in</span>
+                {% else %}
+                    <button class="btn btn-ghost btn-xs text-error"
+                            hx-delete="{{ base_url }}/settings/categories/hx-delete/{{ entry.id }}"
+                            hx-target="#category-list-container"
+                            hx-swap="outerHTML"
+                            hx-confirm="Remove this category?">
+                        <icons.Trash />
+                    </button>
+                {% endif %}
+            </li>
+        {% endfor %}
+
+        {% if not entries %}
+            <li class="text-sm opacity-60 text-center py-4">
+                No categories configured yet. Add one below or re-enable defaults.
+            </li>
+        {% endif %}
+    </ul>
+</div>

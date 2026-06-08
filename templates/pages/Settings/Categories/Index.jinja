@@ -1,0 +1,44 @@
+{#def
+    user: DetailedUser,
+    entries: list[UserCategoryEntry],
+    catalog: dict[str, CatalogEntry],
+#}
+
+<SettingsLayout title="Settings - Categories" user={{ user }} page="categories">
+    <div class="flex flex-col gap-6">
+        <div>
+            <h2 class="text-lg font-semibold">Homepage Categories</h2>
+            <p class="text-sm opacity-70 mt-1">
+                Choose which categories appear on your homepage and drag to reorder them.
+            </p>
+        </div>
+
+        <Settings.Categories.List entries={{ entries }} catalog={{ catalog }} />
+
+        <div class="divider">Add Custom Category</div>
+
+        <Settings.Categories.AddCustomForm />
+    </div>
+</SettingsLayout>
+
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var el = document.getElementById('category-list');
+        if (!el) return;
+        Sortable.create(el, {
+            handle: '.drag-handle',
+            animation: 150,
+            onEnd: function () {
+                var ids = Array.from(el.querySelectorAll('[data-id]')).map(function (el) {
+                    return el.dataset.id;
+                });
+                htmx.ajax('POST', el.dataset.reorderUrl, {
+                    target: '#category-list-container',
+                    swap: 'innerHTML',
+                    values: { order: ids.join(',') }
+                });
+            }
+        });
+    });
+</script>

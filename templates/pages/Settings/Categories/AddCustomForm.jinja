@@ -1,0 +1,33 @@
+{#def#}
+
+<form class="flex flex-col gap-3"
+      hx-post="{{ base_url }}/settings/categories/hx-add-custom"
+      hx-target="#category-list-container"
+      hx-swap="outerHTML"
+      hx-on::after-request="this.reset()">
+    <div class="flex flex-col gap-1">
+        <label class="text-sm font-medium" for="custom-name">Category name</label>
+        <input id="custom-name"
+               name="display_name"
+               type="text"
+               placeholder="e.g. Horror"
+               class="input input-bordered w-full"
+               required />
+    </div>
+    <div class="flex flex-col gap-1">
+        <label class="text-sm font-medium" for="custom-terms">Search terms (comma-separated)</label>
+        <input id="custom-terms"
+               name="search_terms_raw"
+               type="text"
+               placeholder="e.g. horror, thriller, suspense"
+               class="input input-bordered w-full"
+               required />
+        <p class="text-xs opacity-60">
+            These are the keywords used to find books on Audible for this category.
+        </p>
+    </div>
+    <button type="submit" class="btn btn-primary btn-sm w-fit">
+        <icons.Plus />
+        Add Category
+    </button>
+</form>

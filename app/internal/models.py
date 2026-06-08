@@ -278,6 +278,13 @@ class Indexer(BaseModel, frozen=True):
     privacy: str
 
 
+class UserCategoryPreference(BaseSQLModel, table=True):
+    user_username: str = Field(
+        primary_key=True, foreign_key="user.username", ondelete="CASCADE"
+    )
+    config_json: str = Field(default="")
+
+
 class Config(BaseSQLModel, table=True):
     key: str = Field(primary_key=True)
     value: str

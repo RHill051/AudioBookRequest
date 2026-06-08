@@ -1,10 +1,10 @@
 import asyncio
-from datetime import datetime
 from typing import Awaitable
 
 from aiohttp import ClientSession
 from sqlmodel import Session, select
 
+from app.internal.audible.catalog import CATEGORY_CATALOG
 from app.internal.audible.search import search_audible_books
 from app.internal.audible.types import audible_region_type
 from app.internal.models import Audiobook, AudiobookRequest, AudiobookWithRequests
@@ -86,28 +86,16 @@ async def list_combined_audible_books(
 async def list_category_audible_books(
     session: Session,
     client_session: ClientSession,
+    categories: dict[str, list[str]] | None = None,
     audible_region: audible_region_type | None = None,
     excluded_requested_username: str | None = None,
 ) -> dict[str, list[AudiobookWithRequests]]:
-    categories = {
-        "trending": ["trending", "viral", "popular now", "hot"],
-        "business": [
-            "business",
-            "entrepreneurship",
-            "leadership",
-            "productivity",
-            "success",
-        ],
-        "fiction": ["fiction", "novel", "literature", "story", "fantasy", "mystery"],
-        "biography": ["biography", "memoir", "autobiography", "life story", "history"],
-        "science": ["science", "technology", "physics", "psychology", "innovation"],
-        "recent_releases": [
-            str(datetime.now().year),
-            "new release",
-            "latest",
-            "just released",
-        ],
-    }
+    if categories is None:
+        categories = {
+            entry.id: entry.search_terms
+            for entry in CATEGORY_CATALOG.values()
+            if entry.default_enabled
+        }
 
     recommendations: dict[str, list[AudiobookWithRequests]] = {}
 

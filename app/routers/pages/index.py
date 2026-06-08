@@ -6,14 +6,13 @@ from pydantic import BaseModel
 from sqlalchemy.sql.functions import count
 from sqlmodel import Session, select
 
+from app.internal.audible.category import list_category_audible_books
+from app.internal.audible.preferences import get_user_categories
 from app.internal.audible.types import audible_region_type, get_region_from_settings
 from app.internal.audiobookshelf.client import abs_mark_downloaded_flags
 from app.internal.auth.authentication import ABRAuth, DetailedUser
 from app.internal.models import AudiobookRequest, AudiobookWithRequests
 from app.internal.ranking.quality import quality_config
-from app.routers.api.recommendations import (
-    get_category_recommendations as api_get_category_recommendations,
-)
 from app.routers.api.recommendations import (
     get_fallback_recommendations as api_get_fallback_recommendations,
 )
@@ -124,11 +123,18 @@ async def get_category_recommendations(
     user: Annotated[DetailedUser, Security(ABRAuth())],
     audible_region: audible_region_type | None = None,
 ):
-    result = await api_get_category_recommendations(
+    entries = get_user_categories(session, user.username)
+    enabled = sorted((e for e in entries if e.enabled), key=lambda e: e.order)
+    categories = {e.id: e.search_terms for e in enabled}
+    display_names = {e.id: e.display_name for e in enabled}
+    view_all_terms = {e.id: e.search_terms[0] for e in enabled if e.search_terms}
+
+    result = await list_category_audible_books(
         session=session,
         client_session=client_session,
-        user=user,
+        categories=categories,
         audible_region=audible_region,
+        excluded_requested_username=user.username,
     )
 
     all_books = [bwr.book for books in result.values() for bwr in books]
@@ -139,6 +145,8 @@ async def get_category_recommendations(
     return catalog_response(
         "Index.Categories",
         categories=result,
+        display_names=display_names,
+        view_all_terms=view_all_terms,
         region=region,
         auto_start_download=quality_config.get_auto_download(session),
         user=user,
