@@ -23,22 +23,27 @@
 
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
+    function initSortable() {
         var el = document.getElementById('category-list');
         if (!el) return;
-        Sortable.create(el, {
+        if (el._sortable) el._sortable.destroy();
+        el._sortable = Sortable.create(el, {
             handle: '.drag-handle',
             animation: 150,
             onEnd: function () {
-                var ids = Array.from(el.querySelectorAll('[data-id]')).map(function (el) {
-                    return el.dataset.id;
+                var listEl = document.getElementById('category-list');
+                var ids = Array.from(listEl.querySelectorAll('[data-id]')).map(function (item) {
+                    return item.dataset.id;
                 });
-                htmx.ajax('POST', el.dataset.reorderUrl, {
+                htmx.ajax('POST', listEl.dataset.reorderUrl, {
                     target: '#category-list-container',
-                    swap: 'innerHTML',
+                    swap: 'outerHTML',
                     values: { order: ids.join(',') }
                 });
             }
         });
-    });
+    }
+
+    document.addEventListener('DOMContentLoaded', initSortable);
+    document.addEventListener('htmx:afterSettle', initSortable);
 </script>
