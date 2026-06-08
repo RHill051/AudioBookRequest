@@ -154,6 +154,7 @@ async def start_download(
                 b.downloaded_at = datetime.now()
                 session.add(b)
 
+            session.commit()
             await send_all_notifications(
                 EventEnum.on_successful_download,
                 asin_or_uuid,
