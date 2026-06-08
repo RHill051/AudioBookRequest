@@ -26,6 +26,7 @@ from app.util.log import logger
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _headers(session: Session) -> dict[str, str]:
     token = abs_config.get_api_token(session)
     assert token is not None
@@ -41,6 +42,7 @@ def _normalize(s: str) -> str:
 # ---------------------------------------------------------------------------
 # Pydantic response models
 # ---------------------------------------------------------------------------
+
 
 class _LibraryArray(BaseModel):
     libraries: list[ABSLibrary] = []
@@ -65,9 +67,11 @@ _ListResponse: TypeAdapter[_ListResponseBook | _ListResponsePodcast] = TypeAdapt
 # Library index cache
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class ABSLibraryIndex:
     """Immutable in-memory index of the ABS library for O(1) membership checks."""
+
     asins: frozenset[str]
     norm_titles: frozenset[str]
 
@@ -114,7 +118,9 @@ async def _fetch_all_library_items(
                     break
                 batch = payload.results
         except Exception as e:
-            logger.debug("ABS: exception fetching library page", page=page, error=str(e))
+            logger.debug(
+                "ABS: exception fetching library page", page=page, error=str(e)
+            )
             break
 
         all_items.extend(batch)
@@ -177,6 +183,7 @@ def _book_in_index(book: Audiobook, index: ABSLibraryIndex) -> bool:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 async def abs_get_libraries(
     session: Session, client_session: ClientSession

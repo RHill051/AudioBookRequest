@@ -101,7 +101,12 @@ async def list_category_audible_books(
         "fiction": ["fiction", "novel", "literature", "story", "fantasy", "mystery"],
         "biography": ["biography", "memoir", "autobiography", "life story", "history"],
         "science": ["science", "technology", "physics", "psychology", "innovation"],
-        "recent_releases": [str(datetime.now().year), "new release", "latest", "just released"],
+        "recent_releases": [
+            str(datetime.now().year),
+            "new release",
+            "latest",
+            "just released",
+        ],
     }
 
     recommendations: dict[str, list[AudiobookWithRequests]] = {}

@@ -5,7 +5,10 @@ from aiohttp import ClientSession
 from fastapi import APIRouter, Depends, Form, HTTPException, Security
 from sqlmodel import Session
 
-from app.internal.audiobookshelf.client import abs_mark_downloaded_flags, flush_abs_library_cache
+from app.internal.audiobookshelf.client import (
+    abs_mark_downloaded_flags,
+    flush_abs_library_cache,
+)
 from app.internal.audiobookshelf.config import abs_config
 from app.internal.auth.authentication import ABRAuth, DetailedUser
 from app.internal.db_queries import get_wishlist_counts, get_wishlist_results
