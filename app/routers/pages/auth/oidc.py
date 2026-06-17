@@ -155,9 +155,13 @@ async def login_oidc(
     session.add(user)
     session.commit()
 
-    expires_in: int = (
-        body.expires_in or auth_config.get_access_token_expiry_minutes(session) * 60
+    logger.info(
+        "OIDC access token expiry from provider",
+        provider_expires_in=body.expires_in,
+        username=censor(username),
     )
+
+    expires_in: int = auth_config.get_access_token_expiry_minutes(session) * 60
     expires = int(time.time() + expires_in)
 
     request.session["sub"] = username
