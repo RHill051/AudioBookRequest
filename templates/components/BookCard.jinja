@@ -84,4 +84,15 @@
             {{ book.runtime_length_hrs }}h
         </div>
     {% endif %}
+    <!-- Series -->
+    {% if book.series_name and book.series_asin %}
+        <button class="text-xs text-left text-secondary opacity-80 hover:opacity-100 hover:underline mt-1 line-clamp-1 cursor-pointer"
+                title="View series: {{ book.series_name }}"
+                hx-get="{{ base_url }}/series/hx-drawer/{{ book.series_asin }}?region={{ region }}"
+                hx-target="#series-modal-content"
+                hx-swap="innerHTML"
+                hx-on::after-request="document.getElementById('series-modal').showModal()">
+            {% if book.series_number %}#{{ book.series_number }} · {% endif %}{{ book.series_name }}
+        </button>
+    {% endif %}
 </div>

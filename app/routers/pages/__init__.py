@@ -8,6 +8,7 @@ from . import (
     recommendations,
     request,
     search,
+    series,
     settings,
     static,
     wishlist,
@@ -22,6 +23,7 @@ router.include_router(login.router)
 router.include_router(recommendations.router)
 router.include_router(request.router)
 router.include_router(search.router)
+router.include_router(series.router)
 router.include_router(settings.router)
 router.include_router(static.router)
 router.include_router(wishlist.router)

@@ -1,0 +1,101 @@
+{#def
+    books: list[Audiobook],
+    series_name: str,
+    series_asin: str,
+    requested_asins: set[str],
+    library_asins: set[str],
+    abs_configured: bool,
+    region: audible_region_type,
+    user: DetailedUser,
+    auto_start_download: bool,
+#}
+
+<div class="flex flex-col h-full">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-xl font-bold">{{ series_name }}</h2>
+        <button class="btn btn-sm btn-ghost btn-square"
+                onclick="document.getElementById('series-modal').close()">
+            <icons.XMark />
+        </button>
+    </div>
+
+    {% if not books %}
+        <div class="flex flex-col items-center justify-center flex-1 gap-2 opacity-60">
+            <span class="text-lg font-semibold">No books found</span>
+            <span class="text-sm">Could not load series books from Audible.</span>
+        </div>
+    {% else %}
+        <div class="flex flex-col gap-2 overflow-y-auto flex-1 pr-1">
+            {% for book in books %}
+                {% set in_library = book.asin in library_asins %}
+                {% set already_requested = book.asin in requested_asins %}
+                {% set downloaded = book.downloaded %}
+
+                <div class="flex gap-3 items-start p-2 rounded-lg hover:bg-base-200 transition-colors">
+
+                    <!-- Cover -->
+                    <div class="relative w-14 h-14 rounded shrink-0 overflow-hidden shadow shadow-black flex items-center justify-center">
+                        {% if book.cover_image %}
+                            <img class="object-cover w-full h-full"
+                                 src="{{ book.cover_image }}"
+                                 alt="{{ book.title }}"
+                                 width="56"
+                                 height="56" />
+                        {% else %}
+                            <icons.PhotoOff />
+                        {% endif %}
+                    </div>
+
+                    <!-- Info + Status -->
+                    <div class="flex flex-1 min-w-0 items-start justify-between gap-2">
+                        <div class="flex flex-col min-w-0 gap-0.5">
+                            {% if book.series_number %}
+                                <span class="text-xs opacity-50 font-semibold">#{{ book.series_number }}</span>
+                            {% endif %}
+                            {% if book.asin %}
+                                <a class="text-sm font-bold text-primary line-clamp-2 leading-tight hover:underline"
+                                   href="https://audible{{ audible_regions[region] }}/pd/{{ book.asin }}?ipRedirectOverride=true"
+                                   target="_blank"
+                                   title="{{ book.title }}">
+                                    {{ book.title }}
+                                </a>
+                            {% else %}
+                                <span class="text-sm font-bold line-clamp-2 leading-tight">{{ book.title }}</span>
+                            {% endif %}
+                            <span class="text-xs opacity-60 line-clamp-1">{{ book.authors | join(", ") }}</span>
+                            {% if book.runtime_length_hrs %}
+                                <span class="text-xs opacity-50">{{ book.runtime_length_hrs }}h</span>
+                            {% endif %}
+                        </div>
+
+                        <!-- Status badge / request button -->
+                        <div id="series-status-{{ book.asin }}" class="shrink-0 flex flex-col items-end">
+                            {% if in_library %}
+                                <span class="badge badge-success badge-sm text-xs whitespace-nowrap">In Library</span>
+                            {% elif downloaded %}
+                                <span class="badge badge-success badge-sm text-xs whitespace-nowrap">Downloaded</span>
+                            {% elif already_requested %}
+                                <span class="badge badge-info badge-sm text-xs whitespace-nowrap">Requested</span>
+                            {% else %}
+                                <button class="btn btn-xs btn-info"
+                                        hx-post="{{ base_url }}/series/hx-request/{{ book.asin }}"
+                                        hx-vals='{"region": "{{ region }}", "auto_start_download": "{{ auto_start_download and user.can_download() }}"}'
+                                        hx-disabled-elt="this"
+                                        hx-target="#series-status-{{ book.asin }}"
+                                        hx-swap="innerHTML"
+                                        hx-on:click="this.disabled = true;">
+                                    {% if auto_start_download and user.can_download() %}
+                                        <icons.Download />
+                                    {% else %}
+                                        <icons.Plus />
+                                    {% endif %}
+                                    Request
+                                </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+</div>

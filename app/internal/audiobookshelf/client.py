@@ -180,6 +180,11 @@ def _book_in_index(book: Audiobook, index: ABSLibraryIndex) -> bool:
     return False
 
 
+def abs_book_in_index(book: Audiobook, index: ABSLibraryIndex) -> bool:
+    """Public wrapper — returns True if the book exists in the given ABS library index."""
+    return _book_in_index(book, index)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
