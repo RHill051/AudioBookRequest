@@ -62,7 +62,9 @@ async def backfill_missing_series_data(
         if row is not None:
             return row.series_checked_at is None or row.series_checked_at < stale_cutoff
         failed_at = _failed_lookups.get(asin)
-        return failed_at is None or time.time() - failed_at > _FAILED_LOOKUP_RETRY_SECONDS
+        return (
+            failed_at is None or time.time() - failed_at > _FAILED_LOOKUP_RETRY_SECONDS
+        )
 
     stale_cutoff = datetime.now() - timedelta(seconds=REFETCH_TTL)
     to_check = [asin for asin in unique_asins if _needs_check(asin)][:max_lookups]
