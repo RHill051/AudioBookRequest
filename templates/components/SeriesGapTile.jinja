@@ -2,30 +2,42 @@
     gap: SeriesGap,
 #}
 
-<button class="card bg-base-200 hover:bg-base-300 transition-colors text-left p-3 flex flex-col gap-3 w-full cursor-pointer"
+{% set covers = gap.slots[:8] %}
+{% set n = covers | length %}
+{% set overlap = 0.35 %}
+{% set cover_width = (100 / (1 + (n - 1) * (1 - overlap))) if n > 1 else 100 %}
+{% set cover_shift = cover_width * overlap %}
+{% set missing_count = gap.total_count - gap.owned_count %}
+
+<button class="flex flex-col text-left w-full cursor-pointer group"
         hx-get="{{ base_url }}/series/hx-gap-detail/{{ gap.series_asin }}"
         hx-target="#series-modal-content"
         hx-swap="innerHTML"
         hx-on::after-request="document.getElementById('series-modal').showModal()">
-    <div class="flex -space-x-8 h-20 items-center px-1">
-        {% for slot in gap.slots[:5] %}
-            <div class="w-14 h-14 rounded shadow shadow-black overflow-hidden shrink-0 bg-base-300 flex items-center justify-center border border-base-100">
-                {% if slot.book.cover_image %}
-                    <img class="object-cover w-full h-full"
-                         src="{{ slot.book.cover_image }}"
-                         alt=""
-                         width="56"
-                         height="56" />
-                {% else %}
-                    <icons.PhotoOff />
-                {% endif %}
-            </div>
-        {% endfor %}
+    <div class="relative w-full aspect-[2/1] rounded-lg overflow-hidden shadow shadow-black bg-base-300 group-hover:brightness-90 transition-[filter]">
+        <div class="flex h-full w-full">
+            {% for slot in covers %}
+                <div class="h-full shrink-0"
+                     style="width: {{ cover_width | round(3) }}%; {% if not loop.first %}margin-left: -{{ cover_shift | round(3) }}%;{% endif %}">
+                    {% if slot.book.cover_image %}
+                        <img class="object-cover w-full h-full"
+                             src="{{ slot.book.cover_image }}"
+                             alt="" />
+                    {% else %}
+                        <div class="w-full h-full flex items-center justify-center bg-base-300">
+                            <icons.PhotoOff />
+                        </div>
+                    {% endif %}
+                </div>
+            {% endfor %}
+        </div>
+        {% if missing_count > 0 %}
+            <span class="absolute top-1.5 right-1.5 badge badge-error text-white font-bold border-none shadow">
+                {{ missing_count }}
+            </span>
+        {% endif %}
     </div>
-    <div class="flex flex-col gap-1">
-        <span class="font-bold text-sm line-clamp-2" title="{{ gap.series_name }}">
-            {{ gap.series_name }}
-        </span>
-        <span class="badge badge-neutral badge-sm w-fit whitespace-nowrap">{{ gap.owned_count }} / {{ gap.total_count }} owned</span>
-    </div>
+    <span class="text-sm font-semibold line-clamp-1 mt-1.5 px-0.5" title="{{ gap.series_name }}">
+        {{ gap.series_name }}
+    </span>
 </button>
