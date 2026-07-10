@@ -132,6 +132,35 @@ async def series_gaps_page(
         "Series.Gaps",
         gaps=gaps,
         still_discovering=still_discovering,
+        user=user,
+    )
+
+
+@router.get("/hx-gap-detail/{series_asin}")
+async def series_gap_detail(
+    series_asin: str,
+    session: Annotated[Session, Depends(get_session)],
+    client_session: Annotated[ClientSession, Depends(get_connection)],
+    user: Annotated[DetailedUser, Security(AnyAuth())],
+    region: audible_region_type | None = None,
+):
+    if region is None:
+        region = get_region_from_settings()
+
+    gaps, _ = await get_series_gaps(
+        session=session, client_session=client_session, user=user, audible_region=region
+    )
+    gap = next((g for g in gaps if g.series_asin == series_asin), None)
+    if gap is None:
+        raise ToastException(
+            "That series is no longer missing any books",
+            type="success",
+            cause_refresh=True,
+        )
+
+    return catalog_response(
+        "SeriesGapDetail",
+        gap=gap,
         region=region,
         user=user,
         auto_start_download=quality_config.get_auto_download(session),
@@ -147,7 +176,7 @@ async def series_request_all(
     user: Annotated[DetailedUser, Security(AnyAuth())],
     region: Annotated[audible_region_type | None, Form()] = None,
 ):
-    """Request every not-yet-requested missing book in a series; re-renders the gap card."""
+    """Request every not-yet-requested missing book in a series; re-renders the detail view."""
     if region is None:
         region = get_region_from_settings()
 
@@ -162,12 +191,12 @@ async def series_request_all(
             cause_refresh=True,
         )
 
-    for book in gap.missing_books:
-        if book.asin in gap.requested_asins:
+    for slot in gap.missing_slots:
+        if slot.requested:
             continue
         try:
             await create_request(
-                asin_or_uuid=book.asin,
+                asin_or_uuid=slot.book.asin,
                 session=session,
                 client_session=client_session,
                 background_task=background_task,
@@ -175,7 +204,7 @@ async def series_request_all(
                 region=region,
             )
         except HTTPException as e:
-            logger.warning(e.detail, asin=book.asin, series_asin=series_asin)
+            logger.warning(e.detail, asin=slot.book.asin, series_asin=series_asin)
 
     gaps, _ = await get_series_gaps(
         session=session, client_session=client_session, user=user, audible_region=region
@@ -189,7 +218,7 @@ async def series_request_all(
         )
 
     return catalog_response(
-        "SeriesGapCard",
+        "SeriesGapDetail",
         gap=gap,
         region=region,
         user=user,

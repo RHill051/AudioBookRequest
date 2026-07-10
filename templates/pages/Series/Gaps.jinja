@@ -1,16 +1,14 @@
 {#def
     gaps: list[SeriesGap],
     still_discovering: bool,
-    region: audible_region_type,
     user: DetailedUser,
-    auto_start_download: bool,
 #}
 
 <BaseLayout title="Series Gaps" user={{ user }}>
-<div class="max-w-4xl mx-auto p-4 flex flex-col gap-4">
+<div class="max-w-5xl mx-auto p-4 flex flex-col gap-4">
     <h1 class="text-2xl font-bold">Series Gaps</h1>
     <p class="text-sm opacity-60">
-        Series you own at least one book from, but not all of.
+        Series you own at least one book from, but not all of. Click a series to see what's missing.
     </p>
 
     {% if still_discovering %}
@@ -26,9 +24,9 @@
             <span>No gaps found. Either you're fully caught up, or none of your library's books are linked to a series yet.</span>
         </div>
     {% else %}
-        <div class="flex flex-col gap-4">
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {% for gap in gaps %}
-                <SeriesGapCard gap={{ gap }} region={{ region }} user={{ user }} auto_start_download={{ auto_start_download }} />
+                <SeriesGapTile gap={{ gap }} />
             {% endfor %}
         </div>
     {% endif %}

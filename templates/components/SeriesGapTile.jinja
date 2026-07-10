@@ -1,0 +1,31 @@
+{#def
+    gap: SeriesGap,
+#}
+
+<button class="card bg-base-200 hover:bg-base-300 transition-colors text-left p-3 flex flex-col gap-3 w-full cursor-pointer"
+        hx-get="{{ base_url }}/series/hx-gap-detail/{{ gap.series_asin }}"
+        hx-target="#series-modal-content"
+        hx-swap="innerHTML"
+        hx-on::after-request="document.getElementById('series-modal').showModal()">
+    <div class="flex -space-x-8 h-20 items-center px-1">
+        {% for slot in gap.slots[:5] %}
+            <div class="w-14 h-14 rounded shadow shadow-black overflow-hidden shrink-0 bg-base-300 flex items-center justify-center border border-base-100">
+                {% if slot.book.cover_image %}
+                    <img class="object-cover w-full h-full"
+                         src="{{ slot.book.cover_image }}"
+                         alt=""
+                         width="56"
+                         height="56" />
+                {% else %}
+                    <icons.PhotoOff />
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+    <div class="flex flex-col gap-1">
+        <span class="font-bold text-sm line-clamp-2" title="{{ gap.series_name }}">
+            {{ gap.series_name }}
+        </span>
+        <span class="badge badge-neutral badge-sm w-fit whitespace-nowrap">{{ gap.owned_count }} / {{ gap.total_count }} owned</span>
+    </div>
+</button>

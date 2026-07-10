@@ -11,13 +11,26 @@ from app.internal.auth.authentication import DetailedUser
 from app.internal.models import Audiobook, AudiobookRequest
 
 
+class SeriesGapSlot(BaseModel):
+    book: Audiobook
+    owned: bool
+    requested: bool
+
+
 class SeriesGap(BaseModel):
     series_asin: str
     series_name: str
     owned_count: int
     total_count: int
-    missing_books: list[Audiobook]
-    requested_asins: set[str]
+    slots: list[SeriesGapSlot]
+
+    @property
+    def missing_slots(self) -> list[SeriesGapSlot]:
+        return [s for s in self.slots if not s.owned]
+
+    @property
+    def requestable_count(self) -> int:
+        return sum(1 for s in self.missing_slots if not s.requested)
 
 
 async def get_series_gaps(
@@ -87,24 +100,27 @@ async def get_series_gaps(
         if not full_list:
             continue
 
-        missing = [
-            b
+        slots = [
+            SeriesGapSlot(
+                book=b,
+                owned=parse_series_sequence(b.series_number) in owned_sequences,
+                requested=b.asin in requested_asins,
+            )
             for b in full_list
-            if parse_series_sequence(b.series_number) not in owned_sequences
         ]
-        if not missing:
-            continue
 
-        missing_asins = {b.asin for b in missing}
+        owned_count = sum(1 for s in slots if s.owned)
+        if owned_count == len(slots):
+            continue  # fully owned, no gap
+
         gaps.append(
             SeriesGap(
                 series_asin=series_asin,
                 series_name=full_list[0].series_name
                 or series_names.get(series_asin, "Series"),
-                owned_count=len(full_list) - len(missing),
-                total_count=len(full_list),
-                missing_books=missing,
-                requested_asins=requested_asins & missing_asins,
+                owned_count=owned_count,
+                total_count=len(slots),
+                slots=slots,
             )
         )
 

@@ -85,7 +85,12 @@ async def test_gap_found_for_partially_owned_series(session, user, monkeypatch):
     assert gap.series_asin == "S1"
     assert gap.owned_count == 1
     assert gap.total_count == 3
-    assert {b.asin for b in gap.missing_books} == {"A2", "A3"}
+    assert {s.book.asin for s in gap.missing_slots} == {"A2", "A3"}
+    assert gap.requestable_count == 2
+
+    # slots preserve series order and each carries its own owned flag
+    assert [s.book.asin for s in gap.slots] == ["A1", "A2", "A3"]
+    assert [s.owned for s in gap.slots] == [True, False, False]
 
 
 async def test_fully_owned_series_yields_no_gap(session, user, monkeypatch):
@@ -154,7 +159,13 @@ async def test_requested_missing_book_is_flagged(session, user, monkeypatch):
     gaps, _ = await get_series_gaps(session, object(), user)
 
     assert len(gaps) == 1
-    assert gaps[0].requested_asins == {"A2"}
+    gap = gaps[0]
+    missing = gap.missing_slots
+    assert len(missing) == 1
+    assert missing[0].book.asin == "A2"
+    assert missing[0].requested is True
+    # already requested, so it shouldn't count toward what's left to request
+    assert gap.requestable_count == 0
 
 
 async def test_series_lookup_failure_is_skipped(session, user, monkeypatch):
@@ -218,7 +229,10 @@ async def test_owned_edition_with_different_asin_than_series_representative(
     gap = gaps[0]
     assert gap.owned_count == 1
     assert gap.total_count == 2
-    assert {b.asin for b in gap.missing_books} == {"A2"}
+    assert {s.book.asin for s in gap.missing_slots} == {"A2"}
+    # the representative edition at slot 1 is still shown, just marked owned
+    owned_slot = next(s for s in gap.slots if s.book.asin == "OTHER_EDITION_OF_BOOK1")
+    assert owned_slot.owned is True
 
 
 async def test_non_downloaded_book_not_counted_as_owned(session, user, monkeypatch):

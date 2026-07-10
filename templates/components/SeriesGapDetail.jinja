@@ -1,0 +1,79 @@
+{#def
+    gap: SeriesGap,
+    region: audible_region_type,
+    user: DetailedUser,
+    auto_start_download: bool,
+#}
+
+<div class="flex flex-col h-full" id="series-gap-detail-{{ gap.series_asin }}">
+    <div class="flex items-center justify-between mb-2 gap-2">
+        <h2 class="text-xl font-bold line-clamp-1" title="{{ gap.series_name }}">
+            {{ gap.series_name }}
+        </h2>
+        <button class="btn btn-sm btn-ghost btn-square shrink-0"
+                onclick="document.getElementById('series-modal').close()">
+            <icons.XMark />
+        </button>
+    </div>
+
+    <div class="flex items-center justify-between mb-4 gap-2 flex-wrap">
+        <span class="badge badge-neutral whitespace-nowrap">{{ gap.owned_count }} / {{ gap.total_count }} owned</span>
+        {% if gap.requestable_count %}
+            <button class="btn btn-sm btn-info"
+                    hx-post="{{ base_url }}/series/hx-request-all/{{ gap.series_asin }}"
+                    hx-vals='{"region": "{{ region }}"}'
+                    hx-target="#series-gap-detail-{{ gap.series_asin }}"
+                    hx-swap="outerHTML"
+                    hx-disabled-elt="this"
+                    hx-on:click="this.disabled = true;">
+                Request all missing ({{ gap.requestable_count }})
+            </button>
+        {% endif %}
+    </div>
+
+    <div class="grid grid-cols-3 sm:grid-cols-4 gap-3 overflow-y-auto flex-1 pr-1 auto-rows-min">
+        {% for slot in gap.slots %}
+            <div class="flex flex-col gap-1 {% if not slot.owned %}opacity-50{% endif %}">
+                <div class="relative w-full aspect-square rounded overflow-hidden shadow shadow-black bg-base-300 flex items-center justify-center">
+                    {% if slot.book.cover_image %}
+                        <img class="object-cover w-full h-full {% if not slot.owned %}grayscale{% endif %}"
+                             src="{{ slot.book.cover_image }}"
+                             alt="{{ slot.book.title }}" />
+                    {% else %}
+                        <icons.PhotoOff />
+                    {% endif %}
+                    {% if slot.owned %}
+                        <span class="absolute top-1 right-1 badge badge-success badge-xs">
+                            <icons.Checkmark />
+                        </span>
+                    {% endif %}
+                </div>
+                {% if slot.book.series_number %}
+                    <span class="text-xs opacity-50 font-semibold">#{{ slot.book.series_number }}</span>
+                {% endif %}
+                <span class="text-xs font-semibold line-clamp-2 leading-tight"
+                      title="{{ slot.book.title }}">
+                    {{ slot.book.title }}
+                </span>
+                {% if not slot.owned %}
+                    <div id="series-status-{{ slot.book.asin }}">
+                        {% if slot.requested %}
+                            <span class="badge badge-info badge-xs whitespace-nowrap">Requested</span>
+                        {% else %}
+                            <button class="btn btn-xs btn-info w-full"
+                                    hx-post="{{ base_url }}/series/hx-request/{{ slot.book.asin }}"
+                                    hx-vals='{"region": "{{ region }}", "auto_start_download": "{{ auto_start_download and user.can_download() }}"}'
+                                    hx-disabled-elt="this"
+                                    hx-target="#series-status-{{ slot.book.asin }}"
+                                    hx-swap="innerHTML"
+                                    hx-on:click="this.disabled = true;">
+                                <icons.Plus />
+                                Request
+                            </button>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+        {% endfor %}
+    </div>
+</div>
