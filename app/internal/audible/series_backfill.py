@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import datetime, timedelta
 
 from aiohttp import ClientSession
@@ -14,6 +15,14 @@ from app.internal.models import Audiobook
 from app.util.log import logger
 
 _MAX_CONCURRENT = 5  # limit simultaneous Audible API calls
+
+_FAILED_LOOKUP_RETRY_SECONDS = 60 * 60 * 24  # 1 day
+
+# ASINs with no persisted row whose Audible lookup failed. Tracked separately from
+# series_checked_at (which lives on the row) so a failing ASIN doesn't get retried
+# on every single call forever — but with a shorter cooldown than a successful
+# check, since the failure may be transient (region mismatch, rate limit, etc).
+_failed_lookups: dict[str, float] = {}
 
 
 async def backfill_missing_series_data(
@@ -50,9 +59,10 @@ async def backfill_missing_series_data(
 
     def _needs_check(asin: str) -> bool:
         row = existing.get(asin)
-        if row is None or row.series_checked_at is None:
-            return True
-        return row.series_checked_at < stale_cutoff
+        if row is not None:
+            return row.series_checked_at is None or row.series_checked_at < stale_cutoff
+        failed_at = _failed_lookups.get(asin)
+        return failed_at is None or time.time() - failed_at > _FAILED_LOOKUP_RETRY_SECONDS
 
     stale_cutoff = datetime.now() - timedelta(seconds=REFETCH_TTL)
     to_check = [asin for asin in unique_asins if _needs_check(asin)][:max_lookups]
@@ -81,6 +91,7 @@ async def backfill_missing_series_data(
         row = existing.get(asin)
         if row is None:
             if fetched is None:
+                _failed_lookups[asin] = time.time()
                 continue  # can't resolve on Audible and nothing cached locally: skip
             row = fetched
             row.downloaded = True

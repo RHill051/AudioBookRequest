@@ -2,7 +2,7 @@ from aiohttp import ClientSession
 from pydantic import BaseModel
 from sqlmodel import Session, col, select
 
-from app.internal.audible.series import get_series_books
+from app.internal.audible.series import get_series_books, parse_series_sequence
 from app.internal.audible.series_backfill import backfill_missing_series_data
 from app.internal.audible.types import audible_region_type, get_region_from_settings
 from app.internal.audiobookshelf.client import abs_get_all_library_asins
@@ -55,11 +55,17 @@ async def get_series_gaps(
         )
     ).all()
 
-    owned_by_series: dict[str, set[str]] = {}
+    # Different editions of the same book have different ASINs (narrator, publisher,
+    # abridged/unabridged...), so "do I own this book" is decided by series position
+    # (sequence number) rather than exact ASIN equality.
+    owned_by_series: dict[str, set[float]] = {}
     series_names: dict[str, str] = {}
     for book in owned:
         assert book.series_asin is not None
-        owned_by_series.setdefault(book.series_asin, set()).add(book.asin)
+        owned_sequences = owned_by_series.setdefault(book.series_asin, set())
+        seq = parse_series_sequence(book.series_number)
+        if seq is not None:
+            owned_sequences.add(seq)
         if book.series_name:
             series_names[book.series_asin] = book.series_name
 
@@ -76,12 +82,16 @@ async def get_series_gaps(
     }
 
     gaps: list[SeriesGap] = []
-    for series_asin, owned_asins in owned_by_series.items():
+    for series_asin, owned_sequences in owned_by_series.items():
         full_list = await get_series_books(client_session, series_asin, audible_region)
         if not full_list:
             continue
 
-        missing = [b for b in full_list if b.asin not in owned_asins]
+        missing = [
+            b
+            for b in full_list
+            if parse_series_sequence(b.series_number) not in owned_sequences
+        ]
         if not missing:
             continue
 
@@ -89,8 +99,9 @@ async def get_series_gaps(
         gaps.append(
             SeriesGap(
                 series_asin=series_asin,
-                series_name=series_names.get(series_asin, "Series"),
-                owned_count=len(owned_asins),
+                series_name=full_list[0].series_name
+                or series_names.get(series_asin, "Series"),
+                owned_count=len(full_list) - len(missing),
                 total_count=len(full_list),
                 missing_books=missing,
                 requested_asins=requested_asins & missing_asins,

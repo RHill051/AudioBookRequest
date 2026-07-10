@@ -36,9 +36,35 @@ class _Relationship(BaseModel):
 
 class _SeriesProductResponse(BaseModel):
     class _Product(BaseModel):
+        title: str | None = None
         relationships: list[_Relationship] = []
 
     product: _Product
+
+
+def parse_series_sequence(sequence: str | None) -> float | None:
+    """
+    Parse a raw Audible series sequence string into a comparable number.
+
+    Returns None for anything that isn't a single numbered position: an empty
+    string, a range like "1-7" (used for box sets/compilations), or anything
+    else that doesn't parse as a plain number.
+    """
+    if not sequence:
+        return None
+    sequence = sequence.strip()
+    if not sequence or "-" in sequence:
+        return None
+    try:
+        return float(sequence)
+    except ValueError:
+        return None
+
+
+def _format_sequence(sequence: float) -> str:
+    if sequence == int(sequence):
+        return str(int(sequence))
+    return str(sequence)
 
 
 async def get_series_books(
@@ -47,10 +73,17 @@ async def get_series_books(
     audible_region: audible_region_type | None = None,
 ) -> list[Audiobook]:
     """
-    Fetch all books in a series from Audible, sorted by their sequence position.
+    Fetch one book per numbered position in a series, sorted by sequence.
 
-    Step 1 — fetch the series product to get an ordered list of child ASINs.
-    Step 2 — concurrently fetch each book individually (batch params are ignored by the API).
+    A series' "relationships" on Audible list every edition/narration tied to it
+    (different narrators, publishers, abridged/unabridged, box sets) rather than
+    one entry per book, so we group children by their sequence number and keep a
+    single representative ASIN per position. Box sets and other unnumbered extras
+    (a range like "1-7", or no sequence at all) are dropped entirely, since they
+    aren't an individual missing book.
+
+    Step 1 — fetch the series product to get its title and ordered child ASINs.
+    Step 2 — concurrently fetch full details for one representative book per slot.
     Results are cached for one week.
     """
     if audible_region is None:
@@ -63,11 +96,11 @@ async def get_series_books(
 
     base = f"https://api.audible{audible_regions[audible_region]}/1.0/catalog/products"
 
-    # Step 1: fetch series product to get ordered child ASINs
+    # Step 1: fetch series product to get its title and ordered child ASINs
     try:
         async with client_session.get(
             f"{base}/{series_asin}",
-            params={"response_groups": "relationships"},
+            params={"response_groups": "relationships,media"},
         ) as resp:
             resp.raise_for_status()
             series_data = _SeriesProductResponse.model_validate(await resp.json())
@@ -80,6 +113,8 @@ async def get_series_books(
         )
         return []
 
+    series_name = series_data.product.title or "Series"
+
     children = [
         r
         for r in series_data.product.relationships
@@ -91,25 +126,28 @@ async def get_series_books(
             sort_pos = int(r.sort)
         except ValueError:
             sort_pos = 9999
-        try:
-            seq = float(r.sequence) if r.sequence else 9999.0
-        except ValueError:
-            seq = 9999.0
-        return (sort_pos, seq)
+        seq = parse_series_sequence(r.sequence)
+        return (sort_pos, seq if seq is not None else 9999.0)
 
     children.sort(key=_sort_key)
 
-    seen_asins: set[str] = set()
-    ordered_asins: list[str] = []
+    # One representative ASIN per numbered slot; first one encountered (in sort
+    # order above) wins. Unnumbered/range entries (box sets, compilations) are
+    # skipped since they aren't an individual book position.
+    slots: dict[float, str] = {}
     for child in children:
-        if child.asin not in seen_asins:
-            seen_asins.add(child.asin)
-            ordered_asins.append(child.asin)
+        seq = parse_series_sequence(child.sequence)
+        if seq is None or seq in slots:
+            continue
+        slots[seq] = child.asin
 
-    if not ordered_asins:
+    if not slots:
         return []
 
-    # Step 2: concurrently fetch each book individually (batch endpoints not supported)
+    ordered_sequences = sorted(slots.keys())
+    representative_asins = [slots[seq] for seq in ordered_sequences]
+
+    # Step 2: concurrently fetch full details for each representative book
     semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
 
     async def _fetch(asin: str) -> Audiobook | None:
@@ -124,11 +162,20 @@ async def get_series_books(
                 )
                 return None
 
-    results = await asyncio.gather(*[_fetch(asin) for asin in ordered_asins])
-    asin_to_book = {b.asin: b for b in results if b is not None}
+    results = await asyncio.gather(*[_fetch(asin) for asin in representative_asins])
 
-    # Re-apply step-1 ordering (gather results are unordered by wall-clock)
-    books = [asin_to_book[asin] for asin in ordered_asins if asin in asin_to_book]
+    books: list[Audiobook] = []
+    for seq, fetched in zip(ordered_sequences, results):
+        if fetched is None:
+            continue
+        # A book's own product data may list multiple series (e.g. both
+        # "Publication Order" and "Author's Preferred Order"); pin the fields to
+        # the series we're actually browsing rather than whichever the product
+        # happened to list first.
+        fetched.series_asin = series_asin
+        fetched.series_name = series_name
+        fetched.series_number = _format_sequence(seq)
+        books.append(fetched)
 
     _series_cache[cache_key] = CacheResult(value=books, timestamp=time.time())
     logger.debug(

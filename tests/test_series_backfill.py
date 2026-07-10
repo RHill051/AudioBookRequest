@@ -1,10 +1,12 @@
 """Unit tests for backfilling series data onto library-only audiobooks."""
 
+import time
 from datetime import datetime, timedelta
 
 import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
+from app.internal.audible import series_backfill
 from app.internal.audible.series_backfill import backfill_missing_series_data
 from app.internal.models import Audiobook
 
@@ -176,3 +178,77 @@ async def test_no_row_created_when_fetch_fails_for_unknown_asin(session, monkeyp
 
     assert count == 1
     assert session.exec(select(Audiobook).where(Audiobook.asin == "ASIN6")).first() is None
+
+
+async def test_failed_lookup_is_not_retried_immediately(session, monkeypatch):
+    """
+    Regression test: an ASIN with no existing row that fails to resolve must not be
+    retried on every single call forever, or a handful of permanently-failing
+    library items can block backfill progress on the rest of the library indefinitely.
+    """
+    calls: list[str] = []
+
+    async def fake_get_single_book(client_session, asin, region=None):
+        calls.append(asin)
+        return None
+
+    monkeypatch.setattr(
+        "app.internal.audible.series_backfill.get_single_book", fake_get_single_book
+    )
+
+    count1 = await backfill_missing_series_data(session, object(), ["FAILING_ASIN_1"])
+    assert count1 == 1
+    assert calls == ["FAILING_ASIN_1"]
+
+    count2 = await backfill_missing_series_data(session, object(), ["FAILING_ASIN_1"])
+    assert count2 == 0
+    assert calls == ["FAILING_ASIN_1"]  # not called again within the cooldown
+
+
+async def test_failed_lookup_is_retried_after_cooldown(session, monkeypatch):
+    """Once the cooldown window passes, a previously-failing ASIN is eligible again."""
+    series_backfill._failed_lookups["FAILING_ASIN_2"] = (
+        time.time() - series_backfill._FAILED_LOOKUP_RETRY_SECONDS - 1
+    )
+
+    calls: list[str] = []
+
+    async def fake_get_single_book(client_session, asin, region=None):
+        calls.append(asin)
+        return None
+
+    monkeypatch.setattr(
+        "app.internal.audible.series_backfill.get_single_book", fake_get_single_book
+    )
+
+    count = await backfill_missing_series_data(session, object(), ["FAILING_ASIN_2"])
+
+    assert count == 1
+    assert calls == ["FAILING_ASIN_2"]
+
+
+async def test_failing_asins_do_not_block_progress_on_the_rest_of_the_library(
+    session, monkeypatch
+):
+    """A batch of permanently-failing ASINs shouldn't starve the rest of the batch forever."""
+
+    async def fake_get_single_book(client_session, asin, region=None):
+        if asin.startswith("ALWAYS_FAILS_"):
+            return None
+        return _book(asin)
+
+    monkeypatch.setattr(
+        "app.internal.audible.series_backfill.get_single_book", fake_get_single_book
+    )
+
+    failing = [f"ALWAYS_FAILS_{i}" for i in range(3)]
+    good = ["GOOD_ASIN_1", "GOOD_ASIN_2"]
+
+    # first call: budget is entirely spent on the (still eligible) failing ASINs
+    await backfill_missing_series_data(session, object(), failing + good, max_lookups=3)
+    assert session.exec(select(Audiobook).where(Audiobook.asin == "GOOD_ASIN_1")).first() is None
+
+    # second call: the failing ASINs are now in cooldown, so the good ones get checked
+    await backfill_missing_series_data(session, object(), failing + good, max_lookups=3)
+    assert session.exec(select(Audiobook).where(Audiobook.asin == "GOOD_ASIN_1")).first() is not None
+    assert session.exec(select(Audiobook).where(Audiobook.asin == "GOOD_ASIN_2")).first() is not None
