@@ -185,6 +185,15 @@ def abs_book_in_index(book: Audiobook, index: ABSLibraryIndex) -> bool:
     return _book_in_index(book, index)
 
 
+async def abs_get_all_library_asins(
+    session: Session,
+    client_session: ClientSession,
+) -> list[str]:
+    """Return every Audible ASIN present in the ABS library (used for series backfill)."""
+    items = await _fetch_all_library_items(session, client_session)
+    return [item.media.metadata.asin for item in items if item.media.metadata.asin]
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------

@@ -115,6 +115,13 @@ class Audiobook(BaseSQLModel, table=True):
     series_asin: str | None = None
     series_name: str | None = None
     series_number: str | None = None
+    series_checked_at: datetime | None = Field(
+        default=None,
+        sa_column=Column(
+            type_=DateTime,
+            nullable=True,
+        ),
+    )
 
     requests: list["AudiobookRequest"] = Relationship(back_populates="audiobook")  # pyright: ignore[reportAny]
 
