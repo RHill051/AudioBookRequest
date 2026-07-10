@@ -14,6 +14,7 @@ from fastapi import (
 from pydantic import BaseModel
 from sqlmodel import Session, asc, col, delete, select
 
+from app.internal.audible.series_backfill import get_known_series_asins
 from app.internal.audible.single import get_single_book
 from app.internal.audible.types import (
     audible_region_type,
@@ -76,6 +77,7 @@ async def create_request(
                 client_session,
                 asin=asin_or_uuid,
                 audible_region=region,
+                preferred_series_asins=get_known_series_asins(session),
             )
             if book:
                 session.add(book)

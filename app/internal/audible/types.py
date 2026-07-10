@@ -64,14 +64,30 @@ class AudibleProduct(BaseModel):
     subtitle: str | None = None
     series: list[_Series] = []
 
-    def to_audiobook(self) -> Audiobook:
+    def to_audiobook(self, preferred_series_asins: set[str] | None = None) -> Audiobook:
+        """
+        preferred_series_asins: series ASINs already used elsewhere in the library.
+        A book can carry more than one series tag (e.g. Narnia lists both a
+        "Publication Order" and an "Author's Preferred Order" series, each with
+        its own ASIN), and which one a given edition lists first isn't
+        consistent across editions. Preferring whichever series ASIN the rest
+        of the library already agrees on keeps the same conceptual series from
+        splitting across two different tags.
+        """
         cover_image = self.product_images.get("500")
         if not cover_image:
             covers = list(self.product_images.values())
             if covers:  # default to first cover other than the one keyed by "500"
                 cover_image = covers[0]
 
-        primary_series = self.series[0] if self.series else None
+        primary_series = None
+        if self.series:
+            if preferred_series_asins:
+                primary_series = next(
+                    (s for s in self.series if s.asin in preferred_series_asins), None
+                )
+            if primary_series is None:
+                primary_series = self.series[0]
 
         return Audiobook(
             asin=self.asin,

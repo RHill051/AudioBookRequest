@@ -7,7 +7,10 @@ import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 
 from app.internal.audible import series_backfill
-from app.internal.audible.series_backfill import backfill_missing_series_data
+from app.internal.audible.series_backfill import (
+    backfill_missing_series_data,
+    get_known_series_asins,
+)
 from app.internal.models import Audiobook
 
 
@@ -39,7 +42,9 @@ async def test_creates_row_for_library_only_book(session, monkeypatch):
     """A library book with no existing Audiobook row gets one created with series data."""
     fetched = _book("ASIN1", series_asin="SERIES1", series_name="Some Series")
 
-    async def fake_get_single_book(client_session, asin, region=None):
+    async def fake_get_single_book(
+        client_session, asin, region=None, preferred_series_asins=None
+    ):
         assert asin == "ASIN1"
         return fetched
 
@@ -65,7 +70,9 @@ async def test_updates_existing_row_missing_check(session, monkeypatch):
 
     fetched = _book("ASIN2", series_asin="SERIES2", series_name="Other Series")
 
-    async def fake_get_single_book(client_session, asin, region=None):
+    async def fake_get_single_book(
+        client_session, asin, region=None, preferred_series_asins=None
+    ):
         return fetched
 
     monkeypatch.setattr(
@@ -90,7 +97,9 @@ async def test_skips_recently_checked_rows(session, monkeypatch):
 
     calls: list[str] = []
 
-    async def fake_get_single_book(client_session, asin, region=None):
+    async def fake_get_single_book(
+        client_session, asin, region=None, preferred_series_asins=None
+    ):
         calls.append(asin)
         raise AssertionError("should not be called for a fresh row")
 
@@ -108,7 +117,9 @@ async def test_marks_checked_even_when_no_series_found(session, monkeypatch):
     """A standalone book (no series) is still marked checked so it isn't retried forever."""
     fetched = _book("ASIN4", series_asin=None, series_name=None)
 
-    async def fake_get_single_book(client_session, asin, region=None):
+    async def fake_get_single_book(
+        client_session, asin, region=None, preferred_series_asins=None
+    ):
         return fetched
 
     monkeypatch.setattr(
@@ -131,7 +142,9 @@ async def test_stale_check_is_retried(session, monkeypatch):
 
     fetched = _book("ASIN5", series_asin="SERIES5", series_name="Newly Found Series")
 
-    async def fake_get_single_book(client_session, asin, region=None):
+    async def fake_get_single_book(
+        client_session, asin, region=None, preferred_series_asins=None
+    ):
         return fetched
 
     monkeypatch.setattr(
@@ -149,7 +162,9 @@ async def test_respects_max_lookups(session, monkeypatch):
     """Only up to max_lookups ASINs are checked in a single call."""
     calls: list[str] = []
 
-    async def fake_get_single_book(client_session, asin, region=None):
+    async def fake_get_single_book(
+        client_session, asin, region=None, preferred_series_asins=None
+    ):
         calls.append(asin)
         return _book(asin)
 
@@ -167,7 +182,9 @@ async def test_respects_max_lookups(session, monkeypatch):
 async def test_no_row_created_when_fetch_fails_for_unknown_asin(session, monkeypatch):
     """If Audible lookup fails and we have no existing row, don't write a placeholder."""
 
-    async def fake_get_single_book(client_session, asin, region=None):
+    async def fake_get_single_book(
+        client_session, asin, region=None, preferred_series_asins=None
+    ):
         return None
 
     monkeypatch.setattr(
@@ -177,7 +194,9 @@ async def test_no_row_created_when_fetch_fails_for_unknown_asin(session, monkeyp
     count = await backfill_missing_series_data(session, object(), ["ASIN6"])
 
     assert count == 1
-    assert session.exec(select(Audiobook).where(Audiobook.asin == "ASIN6")).first() is None
+    assert (
+        session.exec(select(Audiobook).where(Audiobook.asin == "ASIN6")).first() is None
+    )
 
 
 async def test_failed_lookup_is_not_retried_immediately(session, monkeypatch):
@@ -188,7 +207,9 @@ async def test_failed_lookup_is_not_retried_immediately(session, monkeypatch):
     """
     calls: list[str] = []
 
-    async def fake_get_single_book(client_session, asin, region=None):
+    async def fake_get_single_book(
+        client_session, asin, region=None, preferred_series_asins=None
+    ):
         calls.append(asin)
         return None
 
@@ -213,7 +234,9 @@ async def test_failed_lookup_is_retried_after_cooldown(session, monkeypatch):
 
     calls: list[str] = []
 
-    async def fake_get_single_book(client_session, asin, region=None):
+    async def fake_get_single_book(
+        client_session, asin, region=None, preferred_series_asins=None
+    ):
         calls.append(asin)
         return None
 
@@ -232,7 +255,9 @@ async def test_failing_asins_do_not_block_progress_on_the_rest_of_the_library(
 ):
     """A batch of permanently-failing ASINs shouldn't starve the rest of the batch forever."""
 
-    async def fake_get_single_book(client_session, asin, region=None):
+    async def fake_get_single_book(
+        client_session, asin, region=None, preferred_series_asins=None
+    ):
         if asin.startswith("ALWAYS_FAILS_"):
             return None
         return _book(asin)
@@ -246,9 +271,55 @@ async def test_failing_asins_do_not_block_progress_on_the_rest_of_the_library(
 
     # first call: budget is entirely spent on the (still eligible) failing ASINs
     await backfill_missing_series_data(session, object(), failing + good, max_lookups=3)
-    assert session.exec(select(Audiobook).where(Audiobook.asin == "GOOD_ASIN_1")).first() is None
+    assert (
+        session.exec(select(Audiobook).where(Audiobook.asin == "GOOD_ASIN_1")).first()
+        is None
+    )
 
     # second call: the failing ASINs are now in cooldown, so the good ones get checked
     await backfill_missing_series_data(session, object(), failing + good, max_lookups=3)
-    assert session.exec(select(Audiobook).where(Audiobook.asin == "GOOD_ASIN_1")).first() is not None
-    assert session.exec(select(Audiobook).where(Audiobook.asin == "GOOD_ASIN_2")).first() is not None
+    assert (
+        session.exec(select(Audiobook).where(Audiobook.asin == "GOOD_ASIN_1")).first()
+        is not None
+    )
+    assert (
+        session.exec(select(Audiobook).where(Audiobook.asin == "GOOD_ASIN_2")).first()
+        is not None
+    )
+
+
+def test_get_known_series_asins_returns_distinct_non_null_series(session):
+    session.add(_book("A1", series_asin="SERIES1"))
+    session.add(_book("A2", series_asin="SERIES1"))  # duplicate, should collapse
+    session.add(_book("A3", series_asin="SERIES2"))
+    session.add(_book("A4", series_asin=None))
+    session.commit()
+
+    assert get_known_series_asins(session) == {"SERIES1", "SERIES2"}
+
+
+async def test_backfill_passes_known_series_asins_to_lookup(session, monkeypatch):
+    """
+    Regression test: backfill must tell get_single_book which series ASINs are
+    already in use so a book with more than one series tag (e.g. Narnia) gets
+    filed under the one the rest of the library already agrees on.
+    """
+    session.add(_book("EXISTING", series_asin="KNOWN_SERIES"))
+    session.commit()
+
+    received: set[str] | None = None
+
+    async def fake_get_single_book(
+        client_session, asin, region=None, preferred_series_asins=None
+    ):
+        nonlocal received
+        received = preferred_series_asins
+        return _book(asin, series_asin="KNOWN_SERIES")
+
+    monkeypatch.setattr(
+        "app.internal.audible.series_backfill.get_single_book", fake_get_single_book
+    )
+
+    await backfill_missing_series_data(session, object(), ["NEW_ASIN"])
+
+    assert received == {"KNOWN_SERIES"}

@@ -53,8 +53,8 @@ def test_no_series_yields_none_fields():
     assert book.series_number is None
 
 
-def test_only_first_series_used():
-    """When a book belongs to multiple series, only the first is stored."""
+def test_defaults_to_first_series_with_no_preference():
+    """With no preferred_series_asins, the first-listed series is used."""
     book = _make_product(
         [
             {"asin": "ASIN1", "title": "Primary Series", "sequence": "3"},
@@ -63,4 +63,35 @@ def test_only_first_series_used():
     ).to_audiobook()
 
     assert book.series_name == "Primary Series"
+    assert book.series_asin == "ASIN1"
+
+
+def test_prefers_already_known_series_over_first_listed():
+    """
+    Regression test: a book can carry more than one series tag (e.g. Narnia
+    lists both a "Publication Order" and an "Author's Preferred Order" series),
+    and which one a given edition lists first isn't consistent across editions.
+    If one of the candidates is already used elsewhere in the library, prefer
+    it even if it's not first, so the same conceptual series doesn't split.
+    """
+    book = _make_product(
+        [
+            {"asin": "ASIN1", "title": "Publication Order", "sequence": "3"},
+            {"asin": "ASIN2", "title": "Author's Preferred Order", "sequence": "1"},
+        ]
+    ).to_audiobook(preferred_series_asins={"ASIN2"})
+
+    assert book.series_name == "Author's Preferred Order"
+    assert book.series_asin == "ASIN2"
+    assert book.series_number == "1"
+
+
+def test_falls_back_to_first_listed_when_no_candidate_is_known():
+    book = _make_product(
+        [
+            {"asin": "ASIN1", "title": "Publication Order", "sequence": "3"},
+            {"asin": "ASIN2", "title": "Author's Preferred Order", "sequence": "1"},
+        ]
+    ).to_audiobook(preferred_series_asins={"SOME_UNRELATED_SERIES_ASIN"})
+
     assert book.series_asin == "ASIN1"

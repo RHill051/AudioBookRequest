@@ -25,6 +25,22 @@ _FAILED_LOOKUP_RETRY_SECONDS = 60 * 60 * 24  # 1 day
 _failed_lookups: dict[str, float] = {}
 
 
+def get_known_series_asins(session: Session) -> set[str]:
+    """
+    Every series ASIN already in use somewhere in the library. Passed to
+    to_audiobook() so a book with more than one series tag (e.g. Narnia's
+    "Publication Order" vs "Author's Preferred Order") is filed under whichever
+    one the rest of the library already agrees on, instead of whichever the
+    fetched product happens to list first.
+    """
+    rows = session.exec(
+        select(col(Audiobook.series_asin)).where(
+            col(Audiobook.series_asin).is_not(None)
+        )
+    ).all()
+    return {asin for asin in rows if asin is not None}
+
+
 async def backfill_missing_series_data(
     session: Session,
     client_session: ClientSession,
@@ -73,11 +89,17 @@ async def backfill_missing_series_data(
         return 0
 
     semaphore = asyncio.Semaphore(_MAX_CONCURRENT)
+    preferred_series_asins = get_known_series_asins(session)
 
     async def _fetch(asin: str) -> Audiobook | None:
         async with semaphore:
             try:
-                return await get_single_book(client_session, asin, audible_region)
+                return await get_single_book(
+                    client_session,
+                    asin,
+                    audible_region,
+                    preferred_series_asins=preferred_series_asins,
+                )
             except Exception as e:
                 logger.warning(
                     "Failed to backfill series data for library book",

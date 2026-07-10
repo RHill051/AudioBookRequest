@@ -12,6 +12,7 @@ async def get_single_book(
     client_session: ClientSession,
     asin: str,
     audible_region: audible_region_type | None = None,
+    preferred_series_asins: set[str] | None = None,
 ):
     if audible_region is None:
         audible_region = get_region_from_settings()
@@ -28,4 +29,4 @@ async def get_single_book(
     ) as response:
         response.raise_for_status()
         product = AudibleSingleResponse.model_validate(await response.json())
-        return product.product.to_audiobook()
+        return product.product.to_audiobook(preferred_series_asins)
