@@ -163,7 +163,7 @@ async def search_audible_books(
         "products_sort_by": "Relevance",
         "keywords": query,
         "page": page,
-        "response_groups": ["media", "series"],
+        "response_groups": "media,series",
     }
 
     try:

@@ -54,7 +54,7 @@ async def list_similar_audible_books(
     base_url = f"https://api.audible{audible_regions[audible_region]}/1.0/catalog/products/{asin}/sims"
     params = {
         "num_results": min(10, max(1, num_results)),  # audible limits to max 10
-        "response_groups": ["media"],
+        "response_groups": "media,series",
     }
 
     ordered: list[Audiobook] = []
