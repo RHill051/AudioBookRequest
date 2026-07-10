@@ -9,15 +9,15 @@
 {% set cover_shift = cover_width * overlap %}
 {% set missing_count = gap.total_count - gap.owned_count %}
 
-<button class="flex flex-col text-left w-full cursor-pointer group"
+<button class="flex flex-col text-left w-full min-w-0 cursor-pointer group"
         hx-get="{{ base_url }}/series/hx-gap-detail/{{ gap.series_asin }}"
         hx-target="#series-modal-content"
         hx-swap="innerHTML"
         hx-on::after-request="document.getElementById('series-modal').showModal()">
-    <div class="relative w-full aspect-[2/1] rounded-lg overflow-hidden shadow shadow-black bg-base-300 group-hover:brightness-90 transition-[filter]">
+    <div class="relative w-full min-w-0 aspect-[2/1] rounded-lg overflow-hidden shadow shadow-black bg-base-300 group-hover:brightness-90 transition-[filter]">
         <div class="flex h-full w-full">
             {% for slot in covers %}
-                <div class="h-full shrink-0"
+                <div class="h-full shrink-0 min-w-0 overflow-hidden"
                      style="width: {{ cover_width | round(3) }}%; {% if not loop.first %}margin-left: -{{ cover_shift | round(3) }}%;{% endif %}">
                     {% if slot.book.cover_image %}
                         <img class="object-cover w-full h-full"

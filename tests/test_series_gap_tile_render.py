@@ -87,3 +87,16 @@ def test_missing_count_badge_shows_correct_number():
 def test_missing_count_badge_hidden_when_fully_owned():
     html = catalog.render("SeriesGapTile", gap=_gap(3, owned_count=3))
     assert "badge-error" not in html
+
+
+@pytest.mark.parametrize("n", [1, 3, 8])
+def test_tile_and_covers_override_flex_min_width(n: int):
+    """
+    Regression guard: flex/grid items default to a content-based min-width, which
+    lets a row of shrink-0 cover images force the tile wider than its grid column
+    once real (differently-shaped) cover art is involved. min-w-0 must stay on the
+    button and on each cover wrapper to keep every tile a fixed, uniform size.
+    """
+    html = catalog.render("SeriesGapTile", gap=_gap(n))
+    assert re.search(r"<button[^>]*\bmin-w-0\b", html)
+    assert html.count("min-w-0") >= n + 1  # button + one per cover wrapper
