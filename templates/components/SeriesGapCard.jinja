@@ -1,0 +1,74 @@
+{#def
+    gap: SeriesGap,
+    region: audible_region_type,
+    user: DetailedUser,
+    auto_start_download: bool,
+#}
+
+{% set requestable = gap.missing_books | rejectattr("asin", "in", gap.requested_asins) | list %}
+
+<div class="card bg-base-200" id="series-gap-{{ gap.series_asin }}">
+    <div class="card-body p-4 gap-3">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+            <h2 class="card-title text-lg">
+                {{ gap.series_name }}
+            </h2>
+            <div class="flex items-center gap-2">
+                <span class="badge badge-neutral whitespace-nowrap">{{ gap.owned_count }} / {{ gap.total_count }} owned</span>
+                {% if requestable %}
+                    <button class="btn btn-sm btn-info"
+                            hx-post="{{ base_url }}/series/hx-request-all/{{ gap.series_asin }}"
+                            hx-vals='{"region": "{{ region }}"}'
+                            hx-target="#series-gap-{{ gap.series_asin }}"
+                            hx-swap="outerHTML"
+                            hx-disabled-elt="this"
+                            hx-on:click="this.disabled = true;">
+                        Request all missing ({{ requestable | length }})
+                    </button>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
+            {% for book in gap.missing_books %}
+                <div class="flex gap-3 items-center">
+                    <div class="w-10 h-10 rounded overflow-hidden shrink-0 flex items-center justify-center bg-base-300">
+                        {% if book.cover_image %}
+                            <img class="object-cover w-full h-full"
+                                 src="{{ book.cover_image }}"
+                                 alt="{{ book.title }}"
+                                 width="40"
+                                 height="40" />
+                        {% else %}
+                            <icons.PhotoOff />
+                        {% endif %}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        {% if book.series_number %}
+                            <span class="text-xs opacity-50 font-semibold">#{{ book.series_number }}</span>
+                        {% endif %}
+                        <div class="text-sm font-semibold line-clamp-1" title="{{ book.title }}">
+                            {{ book.title }}
+                        </div>
+                    </div>
+                    <div id="series-status-{{ book.asin }}" class="shrink-0">
+                        {% if book.asin in gap.requested_asins %}
+                            <span class="badge badge-info badge-sm text-xs whitespace-nowrap">Requested</span>
+                        {% else %}
+                            <button class="btn btn-xs btn-info"
+                                    hx-post="{{ base_url }}/series/hx-request/{{ book.asin }}"
+                                    hx-vals='{"region": "{{ region }}", "auto_start_download": "{{ auto_start_download and user.can_download() }}"}'
+                                    hx-disabled-elt="this"
+                                    hx-target="#series-status-{{ book.asin }}"
+                                    hx-swap="innerHTML"
+                                    hx-on:click="this.disabled = true;">
+                                <icons.Plus />
+                                Request
+                            </button>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>

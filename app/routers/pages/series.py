@@ -6,6 +6,7 @@ from fastapi.responses import HTMLResponse
 from sqlmodel import Session, col, select
 
 from app.internal.audible.series import get_series_books
+from app.internal.audible.series_gaps import get_series_gaps
 from app.internal.audible.types import audible_region_type, get_region_from_settings
 from app.internal.audiobookshelf.client import abs_book_in_index, abs_get_library_index
 from app.internal.audiobookshelf.config import abs_config
@@ -108,3 +109,89 @@ async def series_request_book(
         badge = '<span class="badge badge-info badge-sm text-xs whitespace-nowrap">Requested</span>'
 
     return HTMLResponse(badge)
+
+
+@router.get("/gaps")
+async def series_gaps_page(
+    session: Annotated[Session, Depends(get_session)],
+    client_session: Annotated[ClientSession, Depends(get_connection)],
+    user: Annotated[DetailedUser, Security(AnyAuth())],
+    region: audible_region_type | None = None,
+):
+    if region is None:
+        region = get_region_from_settings()
+
+    gaps, still_discovering = await get_series_gaps(
+        session=session,
+        client_session=client_session,
+        user=user,
+        audible_region=region,
+    )
+
+    return catalog_response(
+        "Series.Gaps",
+        gaps=gaps,
+        still_discovering=still_discovering,
+        region=region,
+        user=user,
+        auto_start_download=quality_config.get_auto_download(session),
+    )
+
+
+@router.post("/hx-request-all/{series_asin}")
+async def series_request_all(
+    series_asin: str,
+    session: Annotated[Session, Depends(get_session)],
+    client_session: Annotated[ClientSession, Depends(get_connection)],
+    background_task: BackgroundTasks,
+    user: Annotated[DetailedUser, Security(AnyAuth())],
+    region: Annotated[audible_region_type | None, Form()] = None,
+):
+    """Request every not-yet-requested missing book in a series; re-renders the gap card."""
+    if region is None:
+        region = get_region_from_settings()
+
+    gaps, _ = await get_series_gaps(
+        session=session, client_session=client_session, user=user, audible_region=region
+    )
+    gap = next((g for g in gaps if g.series_asin == series_asin), None)
+    if gap is None:
+        raise ToastException(
+            "That series no longer has any missing books",
+            type="success",
+            cause_refresh=True,
+        )
+
+    for book in gap.missing_books:
+        if book.asin in gap.requested_asins:
+            continue
+        try:
+            await create_request(
+                asin_or_uuid=book.asin,
+                session=session,
+                client_session=client_session,
+                background_task=background_task,
+                user=user,
+                region=region,
+            )
+        except HTTPException as e:
+            logger.warning(e.detail, asin=book.asin, series_asin=series_asin)
+
+    gaps, _ = await get_series_gaps(
+        session=session, client_session=client_session, user=user, audible_region=region
+    )
+    gap = next((g for g in gaps if g.series_asin == series_asin), None)
+    if gap is None:
+        raise ToastException(
+            "All requested — that series is fully covered now",
+            type="success",
+            cause_refresh=True,
+        )
+
+    return catalog_response(
+        "SeriesGapCard",
+        gap=gap,
+        region=region,
+        user=user,
+        auto_start_download=quality_config.get_auto_download(session),
+    )
