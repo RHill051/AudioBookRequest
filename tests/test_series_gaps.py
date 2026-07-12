@@ -82,6 +82,35 @@ async def test_no_owned_series_books_returns_empty(session, user):
     assert still_discovering is False
 
 
+async def test_run_backfill_false_skips_the_abs_scan_entirely(
+    session, user, monkeypatch
+):
+    """
+    Regression test: the navbar badge calls this on every single page load, so it
+    must not trigger a full ABS library re-fetch each time -- only the real gaps
+    page should do that.
+    """
+    monkeypatch.setattr(
+        "app.internal.audible.series_gaps.abs_config.is_valid", lambda session: True
+    )
+
+    async def fail_if_called(*args, **kwargs):
+        raise AssertionError("backfill must not run when run_backfill=False")
+
+    monkeypatch.setattr(
+        "app.internal.audible.series_gaps.abs_get_all_library_asins", fail_if_called
+    )
+    monkeypatch.setattr(
+        "app.internal.audible.series_gaps.backfill_missing_series_data", fail_if_called
+    )
+
+    gaps, still_discovering = await get_series_gaps(
+        session, object(), user, run_backfill=False
+    )
+    assert gaps == []
+    assert still_discovering is False
+
+
 async def test_gap_found_for_partially_owned_series(session, user, monkeypatch):
     owned = _book(
         "A1",
@@ -593,3 +622,96 @@ async def test_series_drops_off_list_when_only_gap_is_upcoming(
 
     gaps, _ = await get_series_gaps(session, object(), user)
     assert gaps == []
+
+
+# --- dismiss all (bulk) ---------------------------------------------------------
+
+
+async def test_dismissing_every_requestable_slot_drops_the_series_from_the_list(
+    session, user, monkeypatch
+):
+    """
+    Mirrors what the "Not interested in all" bulk endpoint does: dismiss every
+    requestable slot one at a time. Once nothing actionable is left, the series
+    should disappear from the gaps list entirely, same as if you'd dismissed them
+    one by one through the UI.
+    """
+    session.add(
+        _book(
+            "A1",
+            series_asin="S1",
+            series_name="The Series",
+            series_number="1",
+            downloaded=True,
+        )
+    )
+    # the bulk endpoint persists a row for each candidate before dismissing it
+    # (dismissals reference audiobook.asin via a foreign key)
+    session.add(
+        _book("A2", series_asin="S1", series_name="The Series", series_number="2")
+    )
+    session.add(
+        _book("A3", series_asin="S1", series_name="The Series", series_number="3")
+    )
+    session.commit()
+
+    full_series = [
+        _book("A1", series_asin="S1", series_name="The Series", series_number="1"),
+        _book("A2", series_asin="S1", series_name="The Series", series_number="2"),
+        _book("A3", series_asin="S1", series_name="The Series", series_number="3"),
+    ]
+
+    async def fake_get_series_books(client_session, series_asin, region=None):
+        return full_series
+
+    monkeypatch.setattr(
+        "app.internal.audible.series_gaps.get_series_books", fake_get_series_books
+    )
+
+    gaps, _ = await get_series_gaps(session, object(), user)
+    assert len(gaps) == 1
+    assert {s.book.asin for s in gaps[0].requestable_slots} == {"A2", "A3"}
+
+    for slot in gaps[0].requestable_slots:
+        dismiss_book(session, slot.book.asin, user.username)
+
+    gaps, _ = await get_series_gaps(session, object(), user)
+    assert gaps == []
+
+
+async def test_dismiss_all_leaves_already_requested_books_alone(
+    session, user, monkeypatch
+):
+    """Bulk dismiss should only ever touch requestable_slots -- a book you already
+    requested shouldn't be dismissable at all (you clearly still want it)."""
+    session.add(
+        _book(
+            "A1",
+            series_asin="S1",
+            series_name="The Series",
+            series_number="1",
+            downloaded=True,
+        )
+    )
+    session.add(
+        _book("A2", series_asin="S1", series_name="The Series", series_number="2")
+    )
+    session.add(AudiobookRequest(asin="A2", user_username=user.username))
+    session.commit()
+
+    full_series = [
+        _book("A1", series_asin="S1", series_name="The Series", series_number="1"),
+        _book("A2", series_asin="S1", series_name="The Series", series_number="2"),
+    ]
+
+    async def fake_get_series_books(client_session, series_asin, region=None):
+        return full_series
+
+    monkeypatch.setattr(
+        "app.internal.audible.series_gaps.get_series_books", fake_get_series_books
+    )
+
+    gaps, _ = await get_series_gaps(session, object(), user)
+    assert len(gaps) == 1
+    # A2 is already requested, so it's not in requestable_slots and never gets dismissed
+    assert gaps[0].requestable_slots == []

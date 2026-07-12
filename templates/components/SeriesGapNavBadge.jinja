@@ -1,0 +1,9 @@
+{#def
+    total_count: int,
+#}
+
+{% if total_count > 0 %}
+    <span class="absolute -top-1 -right-1 badge badge-error badge-xs text-white font-bold border-none px-1 min-w-4">
+        {{ total_count if total_count < 100 else "99+" }}
+    </span>
+{% endif %}

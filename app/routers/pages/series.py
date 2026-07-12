@@ -29,6 +29,33 @@ from app.util.toast import ToastException
 router = APIRouter(prefix="/series")
 
 
+async def _ensure_book_persisted(
+    session: Session,
+    client_session: ClientSession,
+    asin: str,
+    region: audible_region_type,
+) -> Audiobook | None:
+    """
+    A book that's only ever appeared as a "missing" slot (never requested, never
+    backfilled) has no Audiobook row yet. Dismissing it references that row via a
+    foreign key, so it has to exist first.
+    """
+    book = session.get(Audiobook, asin)
+    if book is not None:
+        return book
+    try:
+        book = await get_single_book(client_session, asin, region)
+        if book:
+            session.add(book)
+            session.commit()
+    except Exception as e:
+        logger.error(
+            "Failed to fetch book details from Audible", asin=asin, error=str(e)
+        )
+        return None
+    return book
+
+
 @router.get("/hx-drawer/{series_asin}")
 async def series_drawer(
     series_asin: str,
@@ -139,6 +166,33 @@ async def series_gaps_page(
         gaps=gaps,
         still_discovering=still_discovering,
         user=user,
+    )
+
+
+@router.get("/hx-gap-badge")
+async def series_gap_badge(
+    session: Annotated[Session, Depends(get_session)],
+    client_session: Annotated[ClientSession, Depends(get_connection)],
+    user: Annotated[DetailedUser, Security(AnyAuth())],
+    region: audible_region_type | None = None,
+):
+    """
+    Total gap count for the navbar icon. Loaded on every page via hx-trigger="load",
+    so it skips the backfill scan -- only the actual gaps page triggers that.
+    """
+    if region is None:
+        region = get_region_from_settings()
+
+    gaps, _ = await get_series_gaps(
+        session=session,
+        client_session=client_session,
+        user=user,
+        audible_region=region,
+        run_backfill=False,
+    )
+
+    return catalog_response(
+        "SeriesGapNavBadge", total_count=sum(g.gap_count for g in gaps)
     )
 
 
@@ -285,19 +339,7 @@ async def series_dismiss_book(
     if region is None:
         region = get_region_from_settings()
 
-    # a book you've never requested has no Audiobook row yet -- dismissing it
-    # references that row via a foreign key, so it has to exist first
-    book = session.get(Audiobook, asin)
-    if book is None:
-        try:
-            book = await get_single_book(client_session, asin, region)
-            if book:
-                session.add(book)
-                session.commit()
-        except Exception as e:
-            logger.error(
-                "Failed to fetch book details from Audible", asin=asin, error=str(e)
-            )
+    book = await _ensure_book_persisted(session, client_session, asin, region)
     if book is None:
         raise ToastException("Book not found", type="error")
 
@@ -312,6 +354,57 @@ async def series_dismiss_book(
         slot=slot,
         region=region,
         is_admin=user.is_admin(),
+    )
+
+
+@router.post("/hx-dismiss-all/{series_asin}")
+async def series_dismiss_all(
+    series_asin: str,
+    session: Annotated[Session, Depends(get_session)],
+    client_session: Annotated[ClientSession, Depends(get_connection)],
+    user: Annotated[DetailedUser, Security(AnyAuth())],
+    region: Annotated[audible_region_type | None, Form()] = None,
+):
+    """Mark every not-yet-requested missing book in a series 'not interested'; re-renders the detail view."""
+    if region is None:
+        region = get_region_from_settings()
+
+    gaps, _ = await get_series_gaps(
+        session=session, client_session=client_session, user=user, audible_region=region
+    )
+    gap = next((g for g in gaps if g.series_asin == series_asin), None)
+    if gap is None:
+        raise ToastException(
+            "That series no longer has any missing books",
+            type="success",
+            cause_refresh=True,
+        )
+
+    for slot in gap.requestable_slots:
+        book = await _ensure_book_persisted(
+            session, client_session, slot.book.asin, region
+        )
+        if book is None:
+            continue
+        dismiss_book(session, slot.book.asin, user.username)
+
+    gaps, _ = await get_series_gaps(
+        session=session, client_session=client_session, user=user, audible_region=region
+    )
+    gap = next((g for g in gaps if g.series_asin == series_asin), None)
+    if gap is None:
+        raise ToastException(
+            "Got it — nothing left in that series to act on",
+            type="success",
+            cause_refresh=True,
+        )
+
+    return catalog_response(
+        "SeriesGapDetail",
+        gap=gap,
+        region=region,
+        user=user,
+        auto_start_download=quality_config.get_auto_download(session),
     )
 
 

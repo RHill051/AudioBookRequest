@@ -140,6 +140,7 @@ async def get_series_gaps(
     user: DetailedUser,
     audible_region: audible_region_type | None = None,
     backfill_limit: int = 25,
+    run_backfill: bool = True,
 ) -> tuple[list[SeriesGap], bool]:
     """
     Find series that you own at least one book from but not all of.
@@ -147,12 +148,17 @@ async def get_series_gaps(
     Returns the list of gaps (sorted by series name) plus a flag indicating whether
     a backfill lookup ran — if so, there may be more series to discover once the
     rest of the library has been checked on a later call.
+
+    run_backfill=False skips the ABS library scan entirely, relying only on
+    whatever's already known. Used for the navbar badge, which runs on every page
+    load and can't afford a full library re-fetch each time -- the real gaps page
+    still runs the backfill normally.
     """
     if audible_region is None:
         audible_region = get_region_from_settings()
 
     backfilled = 0
-    if abs_config.is_valid(session):
+    if run_backfill and abs_config.is_valid(session):
         library_asins = await abs_get_all_library_asins(session, client_session)
         backfilled = await backfill_missing_series_data(
             session,

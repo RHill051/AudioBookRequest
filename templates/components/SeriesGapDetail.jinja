@@ -19,15 +19,27 @@
     <div class="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <span class="badge badge-neutral whitespace-nowrap">{{ gap.owned_count }} / {{ gap.total_count }} owned</span>
         {% if gap.requestable_count %}
-            <button class="btn btn-sm btn-info"
-                    hx-post="{{ base_url }}/series/hx-request-all/{{ gap.series_asin }}"
-                    hx-vals='{"region": "{{ region }}"}'
-                    hx-target="#series-gap-detail-{{ gap.series_asin }}"
-                    hx-swap="outerHTML"
-                    hx-disabled-elt="this"
-                    hx-on:click="this.disabled = true;">
-                Request all missing ({{ gap.requestable_count }})
-            </button>
+            <div class="flex items-center gap-2 flex-wrap">
+                <button class="btn btn-sm btn-ghost"
+                        hx-post="{{ base_url }}/series/hx-dismiss-all/{{ gap.series_asin }}"
+                        hx-vals='{"region": "{{ region }}"}'
+                        hx-target="#series-gap-detail-{{ gap.series_asin }}"
+                        hx-swap="outerHTML"
+                        hx-disabled-elt="this"
+                        hx-confirm="Mark all {{ gap.requestable_count }} missing books in this series as not interested?"
+                        hx-on:click="this.disabled = true;">
+                    Not interested in all ({{ gap.requestable_count }})
+                </button>
+                <button class="btn btn-sm btn-info"
+                        hx-post="{{ base_url }}/series/hx-request-all/{{ gap.series_asin }}"
+                        hx-vals='{"region": "{{ region }}"}'
+                        hx-target="#series-gap-detail-{{ gap.series_asin }}"
+                        hx-swap="outerHTML"
+                        hx-disabled-elt="this"
+                        hx-on:click="this.disabled = true;">
+                    Request all missing ({{ gap.requestable_count }})
+                </button>
+            </div>
         {% endif %}
     </div>
 

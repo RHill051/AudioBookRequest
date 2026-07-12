@@ -119,8 +119,12 @@
                         </a>
                         <a preload
                            href="{{ base_url }}/series/gaps"
-                           class="btn btn-ghost btn-square"
-                           title="Series Gaps">
+                           class="btn btn-ghost btn-square relative"
+                           title="Series Gaps"
+                           hx-get="{{ base_url }}/series/hx-gap-badge"
+                           hx-trigger="load"
+                           hx-target="this"
+                           hx-swap="beforeend">
                             <icons.Stack />
                         </a>
                     </div>
