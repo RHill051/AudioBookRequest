@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from aiohttp import ClientSession
 from pydantic import BaseModel
 from sqlmodel import Session, col, select
@@ -8,13 +10,21 @@ from app.internal.audible.types import audible_region_type, get_region_from_sett
 from app.internal.audiobookshelf.client import abs_get_all_library_asins
 from app.internal.audiobookshelf.config import abs_config
 from app.internal.auth.authentication import DetailedUser
-from app.internal.models import Audiobook, AudiobookRequest
+from app.internal.models import Audiobook, AudiobookRequest, DismissedSeriesBook
 
 
 class SeriesGapSlot(BaseModel):
     book: Audiobook
     owned: bool
     requested: bool
+    dismissed: bool
+    dismissed_by: list[str] = []
+    upcoming: bool
+
+    @property
+    def actionable(self) -> bool:
+        """A real, current gap: not owned, not opted out of, not unreleased yet."""
+        return not self.owned and not self.dismissed and not self.upcoming
 
 
 class SeriesGap(BaseModel):
@@ -25,12 +35,103 @@ class SeriesGap(BaseModel):
     slots: list[SeriesGapSlot]
 
     @property
-    def missing_slots(self) -> list[SeriesGapSlot]:
-        return [s for s in self.slots if not s.owned]
+    def gap_slots(self) -> list[SeriesGapSlot]:
+        return [s for s in self.slots if s.actionable]
+
+    @property
+    def gap_count(self) -> int:
+        return len(self.gap_slots)
+
+    @property
+    def requestable_slots(self) -> list[SeriesGapSlot]:
+        return [s for s in self.gap_slots if not s.requested]
 
     @property
     def requestable_count(self) -> int:
-        return sum(1 for s in self.missing_slots if not s.requested)
+        return len(self.requestable_slots)
+
+
+def get_dismissed_asins(session: Session, username: str) -> set[str]:
+    return set(
+        session.exec(
+            select(DismissedSeriesBook.asin).where(
+                DismissedSeriesBook.user_username == username
+            )
+        ).all()
+    )
+
+
+def get_dismissed_by(session: Session, asins: list[str]) -> dict[str, list[str]]:
+    """asin -> usernames who dismissed it. Meant for admin-only display."""
+    if not asins:
+        return {}
+    rows = session.exec(
+        select(DismissedSeriesBook).where(col(DismissedSeriesBook.asin).in_(asins))
+    ).all()
+    result: dict[str, list[str]] = {}
+    for row in rows:
+        result.setdefault(row.asin, []).append(row.user_username)
+    return result
+
+
+def dismiss_book(session: Session, asin: str, username: str) -> None:
+    already = session.exec(
+        select(DismissedSeriesBook).where(
+            DismissedSeriesBook.asin == asin,
+            DismissedSeriesBook.user_username == username,
+        )
+    ).first()
+    if already is None:
+        session.add(DismissedSeriesBook(asin=asin, user_username=username))
+        session.commit()
+
+
+def undismiss_book(session: Session, asin: str, username: str) -> None:
+    existing = session.exec(
+        select(DismissedSeriesBook).where(
+            DismissedSeriesBook.asin == asin,
+            DismissedSeriesBook.user_username == username,
+        )
+    ).first()
+    if existing is not None:
+        session.delete(existing)
+        session.commit()
+
+
+def get_slot_status(
+    session: Session, asin: str, user: DetailedUser
+) -> SeriesGapSlot | None:
+    """
+    Rebuild a single slot's status (used after a dismiss/undismiss/request action to
+    re-render just that slot). Only meant for non-owned slots -- owned is always False
+    here since owned books never show request/dismiss controls in the first place.
+    """
+    book = session.get(Audiobook, asin)
+    if book is None:
+        return None
+
+    requested = (
+        session.exec(
+            select(AudiobookRequest).where(
+                AudiobookRequest.asin == asin,
+                AudiobookRequest.user_username == user.username,
+            )
+        ).first()
+        is not None
+    )
+    dismissed_by = (
+        get_dismissed_by(session, [asin]).get(asin, []) if user.is_admin() else []
+    )
+    dismissed = asin in get_dismissed_asins(session, user.username)
+
+    return SeriesGapSlot(
+        book=book,
+        owned=False,
+        requested=requested,
+        dismissed=dismissed,
+        dismissed_by=dismissed_by,
+        upcoming=book.release_date > datetime.now(),
+    )
 
 
 async def get_series_gaps(
@@ -93,6 +194,9 @@ async def get_series_gaps(
             )
         ).all()
     }
+    dismissed_asins = get_dismissed_asins(session, user.username)
+    is_admin = user.is_admin()
+    now = datetime.now()
 
     gaps: list[SeriesGap] = []
     for series_asin, owned_sequences in owned_by_series.items():
@@ -100,18 +204,28 @@ async def get_series_gaps(
         if not full_list:
             continue
 
-        slots = [
-            SeriesGapSlot(
-                book=b,
-                owned=parse_series_sequence(b.series_number) in owned_sequences,
-                requested=b.asin in requested_asins,
+        dismissed_by_map = (
+            get_dismissed_by(session, [b.asin for b in full_list]) if is_admin else {}
+        )
+
+        slots: list[SeriesGapSlot] = []
+        for b in full_list:
+            owned_book = parse_series_sequence(b.series_number) in owned_sequences
+            slots.append(
+                SeriesGapSlot(
+                    book=b,
+                    owned=owned_book,
+                    requested=b.asin in requested_asins,
+                    dismissed=(not owned_book) and b.asin in dismissed_asins,
+                    dismissed_by=dismissed_by_map.get(b.asin, []),
+                    upcoming=(not owned_book) and b.release_date > now,
+                )
             )
-            for b in full_list
-        ]
 
         owned_count = sum(1 for s in slots if s.owned)
-        if owned_count == len(slots):
-            continue  # fully owned, no gap
+        gap_count = sum(1 for s in slots if s.actionable)
+        if gap_count == 0:
+            continue  # nothing left that's owned, dismissed, or not yet released
 
         gaps.append(
             SeriesGap(

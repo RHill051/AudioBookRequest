@@ -183,6 +183,29 @@ class AudiobookRequest(BaseSQLModel, table=True):
     )
 
 
+class DismissedSeriesBook(BaseSQLModel, table=True):
+    """A book a user has marked 'not interested' from the series gaps view."""
+
+    asin: str = Field(
+        primary_key=True,
+        foreign_key="audiobook.asin",
+        ondelete="CASCADE",
+    )
+    user_username: str = Field(
+        primary_key=True,
+        foreign_key="user.username",
+        ondelete="CASCADE",
+    )
+    dismissed_at: datetime = Field(
+        default_factory=datetime.now,
+        sa_column=Column(
+            server_default=func.now(),
+            type_=DateTime,
+            nullable=False,
+        ),
+    )
+
+
 class AudiobookWishlistResult(BaseModel):
     book: Audiobook
     requests: list[AudiobookRequest]

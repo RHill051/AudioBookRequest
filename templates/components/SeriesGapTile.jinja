@@ -7,7 +7,7 @@
 {% set overlap = 0.35 %}
 {% set cover_width = (100 / (1 + (n - 1) * (1 - overlap))) if n > 1 else 100 %}
 {% set cover_shift = cover_width * overlap %}
-{% set missing_count = gap.total_count - gap.owned_count %}
+{% set missing_count = gap.gap_count %}
 
 <button class="flex flex-col text-left w-full min-w-0 cursor-pointer group"
         hx-get="{{ base_url }}/series/hx-gap-detail/{{ gap.series_asin }}"

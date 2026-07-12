@@ -29,7 +29,11 @@ def _book(asin: str, series_number: str | None = None):
 def _gap(n: int, owned_count: int = 1) -> SeriesGap:
     slots = [
         SeriesGapSlot(
-            book=_book(f"A{i}", str(i + 1)), owned=(i < owned_count), requested=False
+            book=_book(f"A{i}", str(i + 1)),
+            owned=(i < owned_count),
+            requested=False,
+            dismissed=False,
+            upcoming=False,
         )
         for i in range(n)
     ]

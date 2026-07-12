@@ -1,0 +1,57 @@
+{#def
+    slot: SeriesGapSlot,
+    region: audible_region_type,
+    is_admin: bool = False,
+    auto_download_enabled: bool = False,
+    just_downloaded: bool = False,
+#}
+
+{% if slot.upcoming %}
+    <span class="badge badge-ghost badge-xs whitespace-nowrap"
+          title="Releases {{ slot.book.release_date.strftime('%B %d, %Y') }}">
+        Coming {{ slot.book.release_date.strftime('%b %Y') }}
+    </span>
+{% elif slot.dismissed %}
+    <div class="flex flex-col items-end gap-0.5">
+        <span class="badge badge-ghost badge-xs whitespace-nowrap">
+            {% if is_admin and slot.dismissed_by %}
+                Not interested ({{ slot.dismissed_by | join(", ") }})
+            {% else %}
+                Not interested
+            {% endif %}
+        </span>
+        <button class="text-xs opacity-60 hover:opacity-100 hover:underline cursor-pointer"
+                hx-post="{{ base_url }}/series/hx-undismiss/{{ slot.book.asin }}"
+                hx-vals='{"region": "{{ region }}"}'
+                hx-target="#series-status-{{ slot.book.asin }}"
+                hx-swap="innerHTML"
+                hx-disabled-elt="this">
+            Undo
+        </button>
+    </div>
+{% elif just_downloaded %}
+    <span class="badge badge-success badge-xs whitespace-nowrap">Downloaded</span>
+{% elif slot.requested %}
+    <span class="badge badge-info badge-xs whitespace-nowrap">Requested</span>
+{% else %}
+    <div class="flex flex-col gap-1">
+        <button class="btn btn-xs btn-info w-full"
+                hx-post="{{ base_url }}/series/hx-gap-request/{{ slot.book.asin }}"
+                hx-vals='{"region": "{{ region }}", "auto_start_download": "{{ auto_download_enabled }}"}'
+                hx-disabled-elt="this"
+                hx-target="#series-status-{{ slot.book.asin }}"
+                hx-swap="innerHTML"
+                hx-on:click="this.disabled = true;">
+            <icons.Plus />
+            Request
+        </button>
+        <button class="text-xs opacity-60 hover:opacity-100 hover:underline cursor-pointer"
+                hx-post="{{ base_url }}/series/hx-dismiss/{{ slot.book.asin }}"
+                hx-vals='{"region": "{{ region }}"}'
+                hx-target="#series-status-{{ slot.book.asin }}"
+                hx-swap="innerHTML"
+                hx-disabled-elt="this">
+            Not interested
+        </button>
+    </div>
+{% endif %}

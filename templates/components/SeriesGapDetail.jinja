@@ -57,20 +57,10 @@
                 </span>
                 {% if not slot.owned %}
                     <div id="series-status-{{ slot.book.asin }}">
-                        {% if slot.requested %}
-                            <span class="badge badge-info badge-xs whitespace-nowrap">Requested</span>
-                        {% else %}
-                            <button class="btn btn-xs btn-info w-full"
-                                    hx-post="{{ base_url }}/series/hx-request/{{ slot.book.asin }}"
-                                    hx-vals='{"region": "{{ region }}", "auto_start_download": "{{ auto_start_download and user.can_download() }}"}'
-                                    hx-disabled-elt="this"
-                                    hx-target="#series-status-{{ slot.book.asin }}"
-                                    hx-swap="innerHTML"
-                                    hx-on:click="this.disabled = true;">
-                                <icons.Plus />
-                                Request
-                            </button>
-                        {% endif %}
+                        <SeriesGapSlotStatus slot={{ slot }}
+                                              region={{ region }}
+                                              is_admin={{ user.is_admin() }}
+                                              auto_download_enabled={{ auto_start_download and user.can_download() }} />
                     </div>
                 {% endif %}
             </div>

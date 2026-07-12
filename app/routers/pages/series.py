@@ -6,7 +6,13 @@ from fastapi.responses import HTMLResponse
 from sqlmodel import Session, col, select
 
 from app.internal.audible.series import get_series_books
-from app.internal.audible.series_gaps import get_series_gaps
+from app.internal.audible.series_gaps import (
+    dismiss_book,
+    get_series_gaps,
+    get_slot_status,
+    undismiss_book,
+)
+from app.internal.audible.single import get_single_book
 from app.internal.audible.types import audible_region_type, get_region_from_settings
 from app.internal.audiobookshelf.client import abs_book_in_index, abs_get_library_index
 from app.internal.audiobookshelf.config import abs_config
@@ -191,9 +197,7 @@ async def series_request_all(
             cause_refresh=True,
         )
 
-    for slot in gap.missing_slots:
-        if slot.requested:
-            continue
+    for slot in gap.requestable_slots:
         try:
             await create_request(
                 asin_or_uuid=slot.book.asin,
@@ -223,4 +227,114 @@ async def series_request_all(
         region=region,
         user=user,
         auto_start_download=quality_config.get_auto_download(session),
+    )
+
+
+@router.post("/hx-gap-request/{asin}")
+async def series_gap_request_book(
+    asin: str,
+    session: Annotated[Session, Depends(get_session)],
+    client_session: Annotated[ClientSession, Depends(get_connection)],
+    background_task: BackgroundTasks,
+    user: Annotated[DetailedUser, Security(AnyAuth())],
+    region: Annotated[audible_region_type | None, Form()] = None,
+    auto_start_download: Annotated[bool, Form()] = False,
+):
+    """Request a book from the series gaps detail view; re-renders just that slot."""
+    if region is None:
+        region = get_region_from_settings()
+
+    try:
+        await create_request(
+            asin_or_uuid=asin,
+            session=session,
+            client_session=client_session,
+            background_task=background_task,
+            user=user,
+            region=region,
+        )
+    except HTTPException as e:
+        logger.warning(e.detail, asin=asin)
+        raise ToastException(e.detail) from e
+
+    # requesting a book you'd previously passed on means you've changed your mind
+    undismiss_book(session, asin, user.username)
+
+    slot = get_slot_status(session, asin, user)
+    if slot is None:
+        raise ToastException("Book not found", type="error")
+
+    return catalog_response(
+        "SeriesGapSlotStatus",
+        slot=slot,
+        region=region,
+        is_admin=user.is_admin(),
+        just_downloaded=auto_start_download and user.can_download(),
+    )
+
+
+@router.post("/hx-dismiss/{asin}")
+async def series_dismiss_book(
+    asin: str,
+    session: Annotated[Session, Depends(get_session)],
+    client_session: Annotated[ClientSession, Depends(get_connection)],
+    user: Annotated[DetailedUser, Security(AnyAuth())],
+    region: Annotated[audible_region_type | None, Form()] = None,
+):
+    """Mark a book 'not interested'; re-renders just that slot."""
+    if region is None:
+        region = get_region_from_settings()
+
+    # a book you've never requested has no Audiobook row yet -- dismissing it
+    # references that row via a foreign key, so it has to exist first
+    book = session.get(Audiobook, asin)
+    if book is None:
+        try:
+            book = await get_single_book(client_session, asin, region)
+            if book:
+                session.add(book)
+                session.commit()
+        except Exception as e:
+            logger.error(
+                "Failed to fetch book details from Audible", asin=asin, error=str(e)
+            )
+    if book is None:
+        raise ToastException("Book not found", type="error")
+
+    dismiss_book(session, asin, user.username)
+
+    slot = get_slot_status(session, asin, user)
+    if slot is None:
+        raise ToastException("Book not found", type="error")
+
+    return catalog_response(
+        "SeriesGapSlotStatus",
+        slot=slot,
+        region=region,
+        is_admin=user.is_admin(),
+    )
+
+
+@router.post("/hx-undismiss/{asin}")
+async def series_undismiss_book(
+    asin: str,
+    session: Annotated[Session, Depends(get_session)],
+    user: Annotated[DetailedUser, Security(AnyAuth())],
+    region: Annotated[audible_region_type | None, Form()] = None,
+):
+    """Undo a 'not interested' mark; re-renders just that slot."""
+    if region is None:
+        region = get_region_from_settings()
+
+    undismiss_book(session, asin, user.username)
+
+    slot = get_slot_status(session, asin, user)
+    if slot is None:
+        raise ToastException("Book not found", type="error")
+
+    return catalog_response(
+        "SeriesGapSlotStatus",
+        slot=slot,
+        region=region,
+        is_admin=user.is_admin(),
     )
