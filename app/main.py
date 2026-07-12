@@ -184,3 +184,22 @@ async def throw_toast_exception(
 
         return await raise_toast(request, ToastException(error_message, type="error"))
     return response
+
+
+@app.middleware("http")
+async def prevent_page_caching(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[StreamingResponse]],
+):
+    """
+    Dynamic pages/fragments must never be cached client-side. Static assets are
+    cached for a year and busted via a `?v=<version>` query string baked into
+    each page's HTML -- if the HTML shell itself gets cached (mobile browsers in
+    particular will do this even without a service worker), it keeps referencing
+    the old `?v=` URLs forever regardless of how many times that version changes.
+    """
+    response = await call_next(request)
+    path = request.url.path.removeprefix(Settings().app.base_url.rstrip("/"))
+    if not path.startswith("/static") and "Cache-Control" not in response.headers:
+        response.headers["Cache-Control"] = "no-store"
+    return response
