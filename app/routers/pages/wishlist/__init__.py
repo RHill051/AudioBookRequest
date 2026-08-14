@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Annotated
 
 from aiohttp import ClientSession
-from fastapi import APIRouter, Depends, Form, HTTPException, Security
+from fastapi import APIRouter, Depends, HTTPException, Security
 from sqlmodel import Session
 
 from app.internal.audiobookshelf.client import (
@@ -12,7 +12,7 @@ from app.internal.audiobookshelf.client import (
 from app.internal.audiobookshelf.config import abs_config
 from app.internal.auth.authentication import ABRAuth, DetailedUser
 from app.internal.db_queries import get_wishlist_counts, get_wishlist_results
-from app.internal.models import Audiobook, GroupEnum, SearchStatusEnum
+from app.internal.models import Audiobook, GroupEnum
 from app.routers.api.requests import delete_request as api_delete_request
 from app.routers.api.requests import start_auto_download_endpoint
 from app.util.connection import get_connection
@@ -34,9 +34,12 @@ async def wishlist(
     user: Annotated[DetailedUser, Security(ABRAuth())],
     sort: str = "title",
     sort_dir: str = "asc",
+    hide_not_found: bool = False,
 ):
     username = None if user.is_admin() else user.username
-    results = get_wishlist_results(session, username, "not_downloaded", sort, sort_dir)
+    results = get_wishlist_results(
+        session, username, "not_downloaded", sort, sort_dir, hide_not_found
+    )
     counts = get_wishlist_counts(session, user)
     return catalog_response(
         "Wishlist.Index",
@@ -46,6 +49,7 @@ async def wishlist(
         abs_configured=abs_config.is_valid(session),
         sort=sort,
         sort_dir=sort_dir,
+        hide_not_found=hide_not_found,
     )
 
 
@@ -56,14 +60,19 @@ async def abs_sync(
     user: Annotated[DetailedUser, Security(ABRAuth(GroupEnum.admin))],
     sort: str = "title",
     sort_dir: str = "asc",
+    hide_not_found: bool = False,
 ):
     flush_abs_library_cache()
-    results = get_wishlist_results(session, None, "not_downloaded", sort, sort_dir)
+    results = get_wishlist_results(
+        session, None, "not_downloaded", sort, sort_dir, hide_not_found
+    )
     books = [r.book for r in results]
     await abs_mark_downloaded_flags(session, client_session, books)
     newly_downloaded = [b for b in books if b.downloaded]
 
-    results = get_wishlist_results(session, None, "not_downloaded", sort, sort_dir)
+    results = get_wishlist_results(
+        session, None, "not_downloaded", sort, sort_dir, hide_not_found
+    )
     counts = get_wishlist_counts(session, user)
 
     if newly_downloaded:
@@ -84,6 +93,7 @@ async def abs_sync(
         update_tablist=True,
         sort=sort,
         sort_dir=sort_dir,
+        hide_not_found=hide_not_found,
     )
 
 
@@ -95,10 +105,13 @@ async def start_auto_download(
     user: Annotated[DetailedUser, Security(ABRAuth(GroupEnum.trusted))],
     sort: str = "title",
     sort_dir: str = "asc",
+    hide_not_found: bool = False,
 ):
     await start_auto_download_endpoint(asin, session, client_session, user)
     username = None if user.is_admin() else user.username
-    results = get_wishlist_results(session, username, "not_downloaded", sort, sort_dir)
+    results = get_wishlist_results(
+        session, username, "not_downloaded", sort, sort_dir, hide_not_found
+    )
     counts = get_wishlist_counts(session, user)
 
     return catalog_response(
@@ -110,33 +123,34 @@ async def start_auto_download(
         update_tablist=True,
         sort=sort,
         sort_dir=sort_dir,
+        hide_not_found=hide_not_found,
     )
 
 
-@router.patch("/hx-search-status/{asin}")
-async def update_search_status(
+@router.patch("/hx-not-found/{asin}")
+async def toggle_not_found(
     asin: str,
     session: Annotated[Session, Depends(get_session)],
     admin_user: Annotated[DetailedUser, Security(ABRAuth(GroupEnum.admin))],
-    search_status: Annotated[str, Form()],
-    search_note: Annotated[str | None, Form()] = None,
     downloaded: bool | None = None,
     sort: str = "title",
     sort_dir: str = "asc",
+    hide_not_found: bool = False,
 ):
     book = session.get(Audiobook, asin)
     if not book:
         raise HTTPException(status_code=404, detail="Book not found")
 
-    book.search_status = SearchStatusEnum(search_status)
-    book.search_note = search_note or None
-    book.last_searched_at = datetime.now()
+    book.not_found = not book.not_found
+    book.not_found_at = datetime.now() if book.not_found else None
     session.add(book)
     session.commit()
 
     response_type = "downloaded" if downloaded else "not_downloaded"
     page = "downloaded" if downloaded else "wishlist"
-    results = get_wishlist_results(session, None, response_type, sort, sort_dir)
+    results = get_wishlist_results(
+        session, None, response_type, sort, sort_dir, hide_not_found
+    )
     counts = get_wishlist_counts(session, admin_user)
 
     return catalog_response(
@@ -148,6 +162,7 @@ async def update_search_status(
         update_tablist=False,
         sort=sort,
         sort_dir=sort_dir,
+        hide_not_found=hide_not_found,
     )
 
 
@@ -159,6 +174,7 @@ async def delete_request(
     downloaded: bool | None = None,
     sort: str = "title",
     sort_dir: str = "asc",
+    hide_not_found: bool = False,
 ):
     await api_delete_request(asin, session, user)
 
@@ -171,6 +187,7 @@ async def delete_request(
             "downloaded",
             sort,
             sort_dir,
+            hide_not_found,
         )
         return catalog_response(
             "Wishlist.Wishlist",
@@ -181,6 +198,7 @@ async def delete_request(
             update_tablist=True,
             sort=sort,
             sort_dir=sort_dir,
+            hide_not_found=hide_not_found,
         )
     else:
         results = get_wishlist_results(
@@ -189,6 +207,7 @@ async def delete_request(
             "not_downloaded",
             sort,
             sort_dir,
+            hide_not_found,
         )
         return catalog_response(
             "Wishlist.Wishlist",
@@ -199,4 +218,5 @@ async def delete_request(
             update_tablist=True,
             sort=sort,
             sort_dir=sort_dir,
+            hide_not_found=hide_not_found,
         )

@@ -65,6 +65,7 @@ def get_wishlist_results(
     response_type: Literal["all", "downloaded", "not_downloaded"] = "all",
     sort_by: str = "title",
     sort_dir: str = "asc",
+    hide_not_found: bool = False,
 ) -> list[AudiobookWishlistResult]:
     """
     Gets the books that have been requested. If a username is given only the books requested by that
@@ -82,6 +83,7 @@ def get_wishlist_results(
         select(Audiobook)
         .where(
             clause,
+            not_(Audiobook.not_found) if hide_not_found else True,
             col(Audiobook.asin).in_(
                 select(AudiobookRequest.asin).where(
                     not username or AudiobookRequest.user_username == username

@@ -21,9 +21,12 @@ async def downloaded(
     user: Annotated[DetailedUser, Security(ABRAuth())],
     sort: str = "title",
     sort_dir: str = "asc",
+    hide_not_found: bool = False,
 ):
     username = None if user.is_admin() else user.username
-    results = get_wishlist_results(session, username, "downloaded", sort, sort_dir)
+    results = get_wishlist_results(
+        session, username, "downloaded", sort, sort_dir, hide_not_found
+    )
     counts = get_wishlist_counts(session, user)
     return catalog_response(
         "Wishlist.Downloaded",
@@ -32,6 +35,7 @@ async def downloaded(
         counts=counts,
         sort=sort,
         sort_dir=sort_dir,
+        hide_not_found=hide_not_found,
     )
 
 
@@ -43,11 +47,14 @@ async def update_downloaded(
     admin_user: Annotated[DetailedUser, Security(ABRAuth(GroupEnum.admin))],
     sort: str = "title",
     sort_dir: str = "asc",
+    hide_not_found: bool = False,
 ):
     await api_mark_downloaded(asin, session, background_task, admin_user)
 
     username = None if admin_user.is_admin() else admin_user.username
-    results = get_wishlist_results(session, username, "not_downloaded", sort, sort_dir)
+    results = get_wishlist_results(
+        session, username, "not_downloaded", sort, sort_dir, hide_not_found
+    )
     counts = get_wishlist_counts(session, admin_user)
 
     if abs_config.is_valid(session):
@@ -62,4 +69,5 @@ async def update_downloaded(
         update_tablist=True,
         sort=sort,
         sort_dir=sort_dir,
+        hide_not_found=hide_not_found,
     )

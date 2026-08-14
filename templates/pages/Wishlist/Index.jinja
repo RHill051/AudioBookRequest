@@ -5,22 +5,27 @@
     abs_configured: bool = False,
     sort = "title",
     sort_dir = "asc",
+    hide_not_found = False,
 #}
 
 <WishlistLayout title="Wishlist" user={{ user }} counts={{ counts }} page="wishlist">
-{% if abs_configured and user.is_admin() %}
-<div class="flex justify-end">
-    <button class="btn btn-sm"
-            hx-post="{{ base_url }}/wishlist/hx-abs-sync?sort={{ sort }}&amp;sort_dir={{ sort_dir }}"
-            hx-target="#book-table-body"
-            hx-swap="outerHTML"
-            hx-disabled-elt="this">
-        <icons.Download />
-        Sync with AudioBookShelf
-    </button>
+<div class="flex justify-end items-center gap-4">
+    <a href="{{ base_url }}/wishlist?sort={{ sort }}&amp;sort_dir={{ sort_dir }}&amp;hide_not_found={{ 'false' if hide_not_found else 'true' }}"
+       class="link link-hover text-sm">
+        {{ "Show not found" if hide_not_found else "Hide not found" }}
+    </a>
+    {% if abs_configured and user.is_admin() %}
+        <button class="btn btn-sm"
+                hx-post="{{ base_url }}/wishlist/hx-abs-sync?sort={{ sort }}&amp;sort_dir={{ sort_dir }}&amp;hide_not_found={{ hide_not_found|lower }}"
+                hx-target="#book-table-body"
+                hx-swap="outerHTML"
+                hx-disabled-elt="this">
+            <icons.Download />
+            Sync with AudioBookShelf
+        </button>
+    {% endif %}
 </div>
-{% endif %}
 <div class="overflow-x-auto flex-1 min-h-0 border-b pb-2 border-b-base-200">
-    <Wishlist.Wishlist results={{ results }} user={{ user }} page="wishlist" counts={{ counts }} sort={{ sort }} sort_dir={{ sort_dir }} />
+    <Wishlist.Wishlist results={{ results }} user={{ user }} page="wishlist" counts={{ counts }} sort={{ sort }} sort_dir={{ sort_dir }} hide_not_found={{ hide_not_found }} />
 </div>
 </WishlistLayout>

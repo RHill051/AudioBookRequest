@@ -6,9 +6,11 @@
     update_tablist = False, # performs oob replacement for the tablist
     sort = "title",
     sort_dir = "asc",
+    hide_not_found = False,
 #}
 
 {% set sort_path = "/wishlist/downloaded" if page.__eq__("downloaded") else "/wishlist" %}
+{% set sort_extra_query = "&hide_not_found=true" if hide_not_found else "" %}
 
 <table id="book-table-body" class="table table-pin-rows min-w-240">
     {% if update_tablist %}
@@ -21,17 +23,17 @@
             </th>
             <th>
             </th>
-            <SortTh label="Title" column="title" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
-            <SortTh label="Author" column="author" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
+            <SortTh label="Title" column="title" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} extra_query={{ sort_extra_query }} />
+            <SortTh label="Author" column="author" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} extra_query={{ sort_extra_query }} />
             <th>
                 Narrator
             </th>
-            <SortTh label="Release" column="release" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
-            <SortTh label="Length (hrs)" column="length" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
-            <SortTh label="# Requested" column="requested" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
-            <SortTh label="Date Added" column="added" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
+            <SortTh label="Release" column="release" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} extra_query={{ sort_extra_query }} />
+            <SortTh label="Length (hrs)" column="length" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} extra_query={{ sort_extra_query }} />
+            <SortTh label="# Requested" column="requested" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} extra_query={{ sort_extra_query }} />
+            <SortTh label="Date Added" column="added" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} extra_query={{ sort_extra_query }} />
             {% if page.__eq__("downloaded") %}
-                <SortTh label="Downloaded" column="downloaded" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} />
+                <SortTh label="Downloaded" column="downloaded" current_sort={{ sort }} current_dir={{ sort_dir }} sort_path={{ sort_path }} extra_query={{ sort_extra_query }} />
             {% endif %}
             <th>
                 Search Status
@@ -156,51 +158,23 @@
                     {% endif %}
 
                     <td>
-                        {% if book.search_status.__eq__("not_found") %}
+                        {% if book.not_found %}
                             <span class="badge badge-error badge-sm whitespace-nowrap">Not Found</span>
-                        {% elif book.search_status.__eq__("found_elsewhere") %}
-                            <span class="badge badge-warning badge-sm whitespace-nowrap">Found Elsewhere</span>
-                        {% endif %}
-                        {% if book.search_note %}
-                            <div class="text-xs opacity-60 mt-1 max-w-32 line-clamp-2" title="{{ book.search_note }}">{{ book.search_note }}</div>
+                            {% if book.not_found_at %}
+                                <div class="text-xs opacity-60 mt-1 whitespace-nowrap">
+                                    Flagged {{ book.not_found_at.strftime("%b %d, %Y") }}
+                                </div>
+                            {% endif %}
                         {% endif %}
                         {% if user.is_admin() %}
-                            <button class="btn btn-xs btn-ghost mt-1"
-                                    title="Edit search status"
-                                    onclick="searchStatus{{ loop.index }}.showModal()">
-                                <icons.Pencil />
+                            <button class="btn btn-xs mt-1"
+                                    title="{{ 'Unmark as not found' if book.not_found else 'Mark as not found' }}"
+                                    hx-patch="{{ base_url }}/wishlist/hx-not-found/{{ book.asin }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}&amp;hide_not_found={{ hide_not_found|lower }}{%- if page.__eq__('downloaded') -%}&amp;downloaded=true{%- endif -%}"
+                                    hx-swap="outerHTML"
+                                    hx-target="#book-table-body"
+                                    hx-disabled-elt="this">
+                                {{ "Unmark" if book.not_found else "Mark Not Found" }}
                             </button>
-                            <dialog id="searchStatus{{ loop.index }}" class="modal">
-                                <div class="modal-box">
-                                    <h3 class="text-lg font-bold mb-4">Search Status: <span class="italic">{{ book.title }}</span></h3>
-                                    {% if book.last_searched_at %}
-                                        <p class="text-xs opacity-60 mb-3">Last checked: {{ book.last_searched_at.strftime("%b %d, %Y") }}</p>
-                                    {% endif %}
-                                    <form hx-patch="{{ base_url }}/wishlist/hx-search-status/{{ book.asin }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}{%- if page.__eq__('downloaded') -%}&amp;downloaded=true{%- endif -%}"
-                                          hx-swap="outerHTML"
-                                          hx-target="#book-table-body">
-                                        <label class="form-control w-full mb-3">
-                                            <div class="label"><span class="label-text">Status</span></div>
-                                            <select name="search_status" class="select select-bordered w-full">
-                                                <option value="not_searched" {% if book.search_status.__eq__("not_searched") %}selected{% endif %}>Not Checked</option>
-                                                <option value="not_found" {% if book.search_status.__eq__("not_found") %}selected{% endif %}>Not Found</option>
-                                                <option value="found_elsewhere" {% if book.search_status.__eq__("found_elsewhere") %}selected{% endif %}>Found Elsewhere</option>
-                                            </select>
-                                        </label>
-                                        <label class="form-control w-full mb-4">
-                                            <div class="label"><span class="label-text">Note (optional)</span></div>
-                                            <textarea name="search_note" class="textarea textarea-bordered w-full" rows="3" placeholder="e.g. only M4B available, tried LibGen and MAM">{{ book.search_note or "" }}</textarea>
-                                        </label>
-                                        <div class="modal-action mt-0">
-                                            <button type="submit" class="btn btn-primary">Save</button>
-                                            <button type="button" class="btn" onclick="searchStatus{{ loop.index }}.close()">Cancel</button>
-                                        </div>
-                                    </form>
-                                </div>
-                                <form method="dialog" class="modal-backdrop">
-                                    <button>close</button>
-                                </form>
-                            </dialog>
                         {% endif %}
                     </td>
                     <td class="grid grid-cols-2 min-w-32 gap-1 w-fit ml-auto">
@@ -213,7 +187,7 @@
                         </a>
                         <button {% if book.downloaded %}title="Downloaded"class="btn btn-square btn-ghost bg-success text-neutral/20" {% else %} title="Automatic Download" class="btn btn-square" {% endif %}
                                 {% if not user.can_download() or book.downloaded %}disabled{% endif %}
-                                hx-post="{{ base_url }}/wishlist/hx-auto-download/{{ book.asin }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}"
+                                hx-post="{{ base_url }}/wishlist/hx-auto-download/{{ book.asin }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}&amp;hide_not_found={{ hide_not_found|lower }}"
                                 hx-swap="outerHTML"
                                 hx-target="#book-table-body"
                                 hx-disabled-elt="this">
@@ -221,7 +195,7 @@
                         </button>
                         <button title="Remove"
                                 class="btn btn-square"
-                                hx-delete="{{ base_url }}/wishlist/hx-delete/{{ book.asin }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}{%- if page.__eq__('downloaded') -%}&amp;downloaded=true{%- endif -%}"
+                                hx-delete="{{ base_url }}/wishlist/hx-delete/{{ book.asin }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}&amp;hide_not_found={{ hide_not_found|lower }}{%- if page.__eq__('downloaded') -%}&amp;downloaded=true{%- endif -%}"
                                 hx-swap="outerHTML"
                                 hx-target="#book-table-body"
                                 hx-disabled-elt="this">
@@ -236,7 +210,7 @@
                         {% else %}
                             <button class="btn btn-square"
                                     title="Set as downloaded"
-                                    hx-patch="{{ base_url }}/wishlist/downloaded/hx-add/{{ book.asin }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}"
+                                    hx-patch="{{ base_url }}/wishlist/downloaded/hx-add/{{ book.asin }}?sort={{ sort }}&amp;sort_dir={{ sort_dir }}&amp;hide_not_found={{ hide_not_found|lower }}"
                                     {% if not user.is_admin() %}disabled{% endif %}
                                     hx-swap="outerHTML"
                                     hx-target="#book-table-body"

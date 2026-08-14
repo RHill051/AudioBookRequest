@@ -62,12 +62,6 @@ class User(BaseSQLModel, table=True):
         return self.username == username
 
 
-class SearchStatusEnum(str, Enum):
-    not_searched = "not_searched"
-    not_found = "not_found"
-    found_elsewhere = "found_elsewhere"
-
-
 class Audiobook(BaseSQLModel, table=True):
     """A cached Audible audiobook result. Used for both the search results and also linked to via a foreign key for requests."""
 
@@ -96,16 +90,15 @@ class Audiobook(BaseSQLModel, table=True):
             nullable=True,
         ),
     )
-    search_status: SearchStatusEnum = Field(
-        default=SearchStatusEnum.not_searched,
+    not_found: bool = Field(
+        default=False,
         sa_column=Column(
-            sa.String(),
-            server_default="not_searched",
+            sa.Boolean(),
+            server_default=sa.false(),
             nullable=False,
         ),
     )
-    search_note: str | None = None
-    last_searched_at: datetime | None = Field(
+    not_found_at: datetime | None = Field(
         default=None,
         sa_column=Column(
             type_=DateTime,
