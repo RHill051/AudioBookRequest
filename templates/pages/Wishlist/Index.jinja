@@ -10,10 +10,13 @@
 
 <WishlistLayout title="Wishlist" user={{ user }} counts={{ counts }} page="wishlist">
 <div class="flex justify-end items-center gap-4">
-    <a href="{{ base_url }}/wishlist?sort={{ sort }}&amp;sort_dir={{ sort_dir }}&amp;hide_not_found={{ 'false' if hide_not_found else 'true' }}"
-       class="link link-hover text-sm">
-        {{ "Show not found" if hide_not_found else "Hide not found" }}
-    </a>
+    <label class="label cursor-pointer gap-2" title="Hide books flagged as not found">
+        <span class="label-text text-sm">Hide not found</span>
+        <input type="checkbox"
+               class="toggle toggle-error toggle-sm"
+               {% if hide_not_found %}checked{% endif %}
+               onchange="location.href='{{ base_url }}/wishlist?sort={{ sort }}&amp;sort_dir={{ sort_dir }}&amp;hide_not_found=' + this.checked" />
+    </label>
     {% if abs_configured and user.is_admin() %}
         <button class="btn btn-sm"
                 hx-post="{{ base_url }}/wishlist/hx-abs-sync?sort={{ sort }}&amp;sort_dir={{ sort_dir }}&amp;hide_not_found={{ hide_not_found|lower }}"
